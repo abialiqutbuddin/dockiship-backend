@@ -1,0 +1,28 @@
+version: "3.8"
+services:
+  mysql:
+    image: mysql:8
+    container_name: dockiship_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: dockiship
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  api:
+    build: .
+    container_name: dockiship_api
+    command: npm run start:dev
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mysql
+    environment:
+      DATABASE_URL: mysql://root:Abiali46%40@mysql:3306/dockiship
+      JWT_SECRET: super-secret
+      NODE_ENV: development
+volumes:
+  mysql_data:

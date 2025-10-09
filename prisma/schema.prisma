@@ -1,0 +1,200 @@
+// =====================
+// Prisma Configuration
+// =====================
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================
+// Enums
+// =====================
+enum MembershipStatus {
+  invited
+  active
+  suspended
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+}
+
+// =====================
+// Core Identity & RBAC
+// =====================
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  fullName     String
+  isActive     Boolean       @default(true)
+
+  memberships  UserTenant[]
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([email])
+}
+
+model Tenant {
+  id             String              @id @default(uuid())
+  name           String              // not unique (many orgs share same display name)
+  slug           String              @unique
+  description    String?
+
+  members        UserTenant[]
+  roles          Role[]
+  subscription   Subscription?
+  entitlements   TenantEntitlement[]
+
+  createdAt      DateTime            @default(now())
+
+  @@index([slug])
+  @@index([name])
+}
+
+model UserTenant {
+  id        String            @id @default(uuid())
+  userId    String
+  tenantId  String
+  isOwner   Boolean           @default(false)
+  status    MembershipStatus  @default(active)
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  roles     UserTenantRole[]
+
+  @@unique([userId, tenantId], name: "userId_tenantId_unique")
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  tenantId    String
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  rolePerms   RolePermission[]
+  memberRoles UserTenantRole[]
+
+  @@unique([name, tenantId], name: "name_tenantId")
+  @@index([tenantId])
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  name        String           @unique          // e.g. "inventory.read", "billing.manage"
+  description String?
+
+  rolePerms   RolePermission[]
+
+  @@index([name])
+}
+
+model RolePermission {
+  id           String      @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role         Role        @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  permission   Permission  @relation(fields: [permissionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([roleId, permissionId], name: "roleId_permissionId_unique")
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model UserTenantRole {
+  id           String      @id @default(uuid())
+  userTenantId String
+  roleId       String
+
+  membership   UserTenant  @relation(fields: [userTenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  role         Role        @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userTenantId, roleId], name: "userTenantId_roleId_unique")
+  @@index([userTenantId])
+  @@index([roleId])
+}
+
+// =====================
+// Plans / Features / Entitlements (for billing & gating)
+// =====================
+model Plan {
+  id            String         @id @default(uuid())
+  code          String         @unique        // e.g. "FREE", "STARTER", "PRO"
+  name          String
+  stripePrice   String?        // Stripe price_id
+  stripeProd    String?        // Stripe product_id
+
+  planFeatures  PlanFeature[]
+  Subscription  Subscription[]
+
+  @@index([code])
+}
+
+model Feature {
+  id                String              @id @default(uuid())
+  code              String              @unique      // e.g. "MODULE_INVENTORY", "API_RATE_LIMIT", "SEATS"
+  name              String
+  description       String?
+
+  planFeatures      PlanFeature[]
+  TenantEntitlement TenantEntitlement[]
+
+  @@index([code])
+}
+
+model PlanFeature {
+  id        String   @id @default(uuid())
+  planId    String
+  featureId String
+  value     Int?                                 // optional quantitative value (e.g., max seats)
+
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  feature   Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([planId, featureId], name: "planId_featureId_unique")
+  @@index([planId])
+  @@index([featureId])
+}
+
+model Subscription {
+  id               String             @id @default(uuid())
+  tenantId         String             @unique
+  planId           String?
+  status           SubscriptionStatus @default(trialing)
+  currentPeriodEnd DateTime?
+  stripeCustomerId String?
+  stripeSubId      String?
+
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  plan             Plan?              @relation(fields: [planId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([planId])
+  @@index([status])
+}
+
+model TenantEntitlement {
+  id        String   @id @default(uuid())
+  tenantId  String
+  featureId String
+  value     Int?
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  feature   Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([tenantId, featureId], name: "tenant_feature_unique")
+  @@index([tenantId])
+  @@index([featureId])
+}

@@ -1,0 +1,100 @@
+name: Deploy DockiShip Backend (PM2)
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - "**/*.md"
+      - ".gitignore"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dockiship-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload files to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: |
+            .
+          target: dockiship-backend
+          strip_components: 0
+          exclude: |
+            .git
+            .github
+            node_modules
+            dist
+            .env
+
+      - name: Build, migrate, and restart (PM2)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            cd ~/dockiship-backend
+
+            # Ensure Node + PM2
+            if ! command -v node >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt-get install -y nodejs build-essential
+            fi
+            if ! command -v pm2 >/dev/null 2>&1; then
+              sudo npm i -g pm2
+            fi
+
+            # Load env vars for tooling (DATABASE_URL, etc.)
+            if [ -f ".env" ]; then
+              set -a
+              . ./.env
+              set +a
+            fi
+
+            # Install & build
+            npm ci
+            npm run build
+
+            # --- DB migrations ---
+            if [ -d "prisma" ] && [ -f "node_modules/.bin/prisma" ]; then
+              echo "Running Prisma migrations..."
+              npx prisma migrate deploy
+            elif npm run | grep -qE "typeorm:migrate"; then
+              echo "Running TypeORM migrations via npm script 'typeorm:migrate'..."
+              npm run typeorm:migrate
+            elif npm run | grep -qE "migration:run"; then
+              echo "Running TypeORM migrations via npm script 'migration:run'..."
+              npm run migration:run
+            else
+              echo "No migration step detected. Skipping."
+            fi
+
+            # Optional seeding (uncomment if you have a script)
+            # if npm run | grep -qE "seed"; then
+            #   npm run seed
+            # fi
+
+            # Start or reload with PM2
+            if [ -f "ecosystem.config.js" ]; then
+              pm2 startOrReload ecosystem.config.js --update-env
+            else
+              pm2 start dist/main.js --name dockiship-backend || pm2 restart dockiship-backend
+            fi
+
+            pm2 save
