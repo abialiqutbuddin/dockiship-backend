@@ -29,16 +29,10 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           source: |
             .
-          target: dockiship-backend
+          target: dockiship-backend   # resolves to ~/dockiship-backend
           strip_components: 0
-          exclude: |
-            .git
-            .github
-            node_modules
-            dist
-            .env
 
-      - name: Build, migrate, and restart (PM2)
+      - name: Build, migrate, and restart (PM2 via nvm)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -49,48 +43,41 @@ jobs:
           script: |
             set -euo pipefail
 
+            # Load nvm for non-interactive shell
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            # Ensure Node 20 (no sudo) and use it
+            nvm install 20
+            nvm use 20
+
             cd ~/dockiship-backend
 
-            # Ensure Node + PM2
-            if ! command -v node >/dev/null 2>&1; then
-              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-              sudo apt-get install -y nodejs build-essential
-            fi
-            if ! command -v pm2 >/dev/null 2>&1; then
-              sudo npm i -g pm2
-            fi
-
-            # Load env vars for tooling (DATABASE_URL, etc.)
+            # Load env for tooling (DATABASE_URL, etc.)
             if [ -f ".env" ]; then
-              set -a
-              . ./.env
-              set +a
+              set -a; . ./.env; set +a
             fi
 
-            # Install & build
+            # Install deps & build
             npm ci
             npm run build
+            npm prune --omit=dev || true
 
-            # --- DB migrations ---
+            # Migrations (Prisma first, then TypeORM fallbacks)
             if [ -d "prisma" ] && [ -f "node_modules/.bin/prisma" ]; then
               echo "Running Prisma migrations..."
               npx prisma migrate deploy
             elif npm run | grep -qE "typeorm:migrate"; then
-              echo "Running TypeORM migrations via npm script 'typeorm:migrate'..."
+              echo "Running TypeORM migrations via 'typeorm:migrate'..."
               npm run typeorm:migrate
             elif npm run | grep -qE "migration:run"; then
-              echo "Running TypeORM migrations via npm script 'migration:run'..."
+              echo "Running TypeORM migrations via 'migration:run'..."
               npm run migration:run
             else
               echo "No migration step detected. Skipping."
             fi
 
-            # Optional seeding (uncomment if you have a script)
-            # if npm run | grep -qE "seed"; then
-            #   npm run seed
-            # fi
-
-            # Start or reload with PM2
+            # PM2 managed start/reload
             if [ -f "ecosystem.config.js" ]; then
               pm2 startOrReload ecosystem.config.js --update-env
             else

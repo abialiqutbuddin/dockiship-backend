@@ -27,50 +27,117 @@ enum SubscriptionStatus {
 }
 
 // =====================
+// Inventory Enums
+// =====================
+enum BarcodeType {
+  EAN13
+  UPC
+  CODE128
+  QR
+  OTHER
+}
+
+enum ProductStatus {
+  active
+  inactive
+  archived
+}
+
+enum WeightUnit {
+  g
+  kg
+  lb
+}
+
+enum LengthUnit {
+  mm
+  cm
+  inch
+}
+
+enum POStatus {
+  draft
+  submitted
+  sent
+  in_transit
+  partially_received
+  received
+  canceled
+}
+
+enum InventoryTxnType {
+  PO_PLACED
+  PO_RECEIVED
+  MANUAL_ADJUST
+  RESERVE
+  RELEASE
+  TRANSFER_OUT
+  TRANSFER_IN
+  CORRECTION
+}
+
+enum StockState {
+  IN_TRANSIT
+  ON_HAND
+  RESERVED
+}
+
+// =====================
 // Core Identity & RBAC
 // =====================
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
+  id           String  @id @default(uuid())
+  email        String  @unique
   passwordHash String
   fullName     String
-  isActive     Boolean       @default(true)
+  isActive     Boolean @default(true)
 
-  memberships  UserTenant[]
+  memberships UserTenant[]
 
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  PurchaseOrder PurchaseOrder[]
+  InventoryTxn  InventoryTxn[]
 
   @@index([email])
 }
 
 model Tenant {
-  id             String              @id @default(uuid())
-  name           String              // not unique (many orgs share same display name)
-  slug           String              @unique
-  description    String?
+  id          String  @id @default(uuid())
+  name        String // not unique (many orgs share same display name)
+  slug        String  @unique
+  description String?
 
-  members        UserTenant[]
-  roles          Role[]
-  subscription   Subscription?
-  entitlements   TenantEntitlement[]
+  members      UserTenant[]
+  roles        Role[]
+  subscription Subscription?
+  entitlements TenantEntitlement[]
 
-  createdAt      DateTime            @default(now())
+  createdAt       DateTime          @default(now())
+  Supplier        Supplier[]
+  Warehouse       Warehouse[]
+  Product         Product[]
+  ProductBarcode  ProductBarcode[]
+  ProductImage    ProductImage[]
+  ProductTag      ProductTag[]
+  ProductSupplier ProductSupplier[]
+  PurchaseOrder   PurchaseOrder[]
+  InventoryTxn    InventoryTxn[]
 
   @@index([slug])
   @@index([name])
 }
 
 model UserTenant {
-  id        String            @id @default(uuid())
-  userId    String
-  tenantId  String
-  isOwner   Boolean           @default(false)
-  status    MembershipStatus  @default(active)
+  id       String           @id @default(uuid())
+  userId   String
+  tenantId String
+  isOwner  Boolean          @default(false)
+  status   MembershipStatus @default(active)
 
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  roles     UserTenantRole[]
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  roles  UserTenantRole[]
 
   @@unique([userId, tenantId], name: "userId_tenantId_unique")
   @@index([tenantId])
@@ -78,7 +145,7 @@ model UserTenant {
 }
 
 model Role {
-  id          String           @id @default(uuid())
+  id          String  @id @default(uuid())
   name        String
   description String?
   tenantId    String
@@ -92,22 +159,22 @@ model Role {
 }
 
 model Permission {
-  id          String           @id @default(uuid())
-  name        String           @unique          // e.g. "inventory.read", "billing.manage"
+  id          String  @id @default(uuid())
+  name        String  @unique // e.g. "inventory.read", "billing.manage"
   description String?
 
-  rolePerms   RolePermission[]
+  rolePerms RolePermission[]
 
   @@index([name])
 }
 
 model RolePermission {
-  id           String      @id @default(uuid())
+  id           String @id @default(uuid())
   roleId       String
   permissionId String
 
-  role         Role        @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  permission   Permission  @relation(fields: [permissionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([roleId, permissionId], name: "roleId_permissionId_unique")
   @@index([roleId])
@@ -115,12 +182,12 @@ model RolePermission {
 }
 
 model UserTenantRole {
-  id           String      @id @default(uuid())
+  id           String @id @default(uuid())
   userTenantId String
   roleId       String
 
-  membership   UserTenant  @relation(fields: [userTenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  role         Role        @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  membership UserTenant @relation(fields: [userTenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([userTenantId, roleId], name: "userTenantId_roleId_unique")
   @@index([userTenantId])
@@ -131,23 +198,23 @@ model UserTenantRole {
 // Plans / Features / Entitlements (for billing & gating)
 // =====================
 model Plan {
-  id            String         @id @default(uuid())
-  code          String         @unique        // e.g. "FREE", "STARTER", "PRO"
-  name          String
-  stripePrice   String?        // Stripe price_id
-  stripeProd    String?        // Stripe product_id
+  id          String  @id @default(uuid())
+  code        String  @unique // e.g. "FREE", "STARTER", "PRO"
+  name        String
+  stripePrice String? // Stripe price_id
+  stripeProd  String? // Stripe product_id
 
-  planFeatures  PlanFeature[]
-  Subscription  Subscription[]
+  planFeatures PlanFeature[]
+  Subscription Subscription[]
 
   @@index([code])
 }
 
 model Feature {
-  id                String              @id @default(uuid())
-  code              String              @unique      // e.g. "MODULE_INVENTORY", "API_RATE_LIMIT", "SEATS"
-  name              String
-  description       String?
+  id          String  @id @default(uuid())
+  code        String  @unique // e.g. "MODULE_INVENTORY", "API_RATE_LIMIT", "SEATS"
+  name        String
+  description String?
 
   planFeatures      PlanFeature[]
   TenantEntitlement TenantEntitlement[]
@@ -156,13 +223,13 @@ model Feature {
 }
 
 model PlanFeature {
-  id        String   @id @default(uuid())
+  id        String @id @default(uuid())
   planId    String
   featureId String
-  value     Int?                                 // optional quantitative value (e.g., max seats)
+  value     Int? // optional quantitative value (e.g., max seats)
 
-  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  feature   Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([planId, featureId], name: "planId_featureId_unique")
   @@index([planId])
@@ -178,23 +245,293 @@ model Subscription {
   stripeCustomerId String?
   stripeSubId      String?
 
-  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  plan             Plan?              @relation(fields: [planId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  plan   Plan?  @relation(fields: [planId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([planId])
   @@index([status])
 }
 
 model TenantEntitlement {
-  id        String   @id @default(uuid())
+  id        String @id @default(uuid())
   tenantId  String
   featureId String
   value     Int?
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  feature   Feature  @relation(fields: [featureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([tenantId, featureId], name: "tenant_feature_unique")
   @@index([tenantId])
   @@index([featureId])
+}
+
+// =====================
+// Suppliers
+// =====================
+model Supplier {
+  id          String  @id @default(uuid())
+  tenantId    String
+  companyName String
+  currency    String  @db.VarChar(3) // ISO-4217 (e.g., "USD","PKR")
+  email       String?
+  phone       String?
+
+  country  String? @db.VarChar(2) // ISO-3166-1 alpha-2 (e.g., "PK")
+  address1 String?
+  address2 String?
+  city     String?
+  state    String?
+  zipCode  String?
+  notes    String?
+
+  isActive Boolean @default(true)
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  products Product[]         @relation("PrimarySupplierProducts")
+  links    ProductSupplier[]
+  pos      PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, companyName], name: "uq_supplier_company_per_tenant")
+  @@index([tenantId])
+  @@index([companyName])
+}
+
+// =====================
+// Warehouses
+// =====================
+model Warehouse {
+  id       String  @id @default(uuid())
+  tenantId String
+  code     String // short code unique per tenant (e.g., "KHI-1")
+  name     String
+  country  String? @db.VarChar(2)
+  address1 String?
+  address2 String?
+  city     String?
+  state    String?
+  zipCode  String?
+  isActive Boolean @default(true)
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  pos    PurchaseOrder[]
+  txns   InventoryTxn[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code], name: "uq_warehouse_code_per_tenant")
+  @@index([tenantId])
+}
+
+// =====================
+// Products
+// =====================
+model Product {
+  id            String        @id @default(uuid())
+  tenantId      String
+  sku           String
+  name          String
+  brand         String?
+  status        ProductStatus @default(active)
+  originCountry String?       @db.VarChar(2)
+
+  // Physicals
+  weight        Decimal?    @db.Decimal(10, 3)
+  weightUnit    WeightUnit? @default(g)
+  length        Decimal?    @db.Decimal(10, 2)
+  width         Decimal?    @db.Decimal(10, 2)
+  height        Decimal?    @db.Decimal(10, 2)
+  dimensionUnit LengthUnit? @default(cm)
+
+  // Commerce
+  retailPrice       Decimal?  @db.Decimal(12, 2)
+  retailCurrency    String?   @db.VarChar(3)
+  originalPrice     Decimal?  @db.Decimal(12, 2) // MSRP / original
+  originalCurrency  String?   @db.VarChar(3)
+  lastPurchasePrice Decimal?  @db.Decimal(12, 2)
+  lastPurchaseCurr  String?   @db.VarChar(3)
+  lastPurchasedAt   DateTime?
+
+  // Relations
+  primarySupplierId String?
+  primarySupplier   Supplier? @relation("PrimarySupplierProducts", fields: [primarySupplierId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  barcodes      ProductBarcode[]
+  images        ProductImage[]
+  tagLinks      ProductTagLink[]
+  supplierLinks ProductSupplier[]
+  poi           PurchaseOrderItem[]
+  txns          InventoryTxn[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, sku], name: "uq_product_sku_per_tenant")
+  @@index([tenantId])
+  @@index([name])
+  @@index([brand])
+}
+
+// Multi-barcode
+model ProductBarcode {
+  id        String      @id @default(uuid())
+  tenantId  String
+  productId String
+  type      BarcodeType
+  value     String
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([tenantId, value], name: "uq_barcode_value_per_tenant")
+  @@index([productId])
+}
+
+// Images
+model ProductImage {
+  id        String  @id @default(uuid())
+  tenantId  String
+  productId String
+  url       String
+  alt       String?
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([productId])
+}
+
+// Tags
+model ProductTag {
+  id       String @id @default(uuid())
+  tenantId String
+  name     String
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  links  ProductTagLink[]
+
+  @@unique([tenantId, name], name: "uq_tag_name_per_tenant")
+}
+
+model ProductTagLink {
+  id        String @id @default(uuid())
+  productId String
+  tagId     String
+
+  product Product    @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tag     ProductTag @relation(fields: [tagId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([productId, tagId], name: "uq_product_tag")
+  @@index([tagId])
+}
+
+// Product <-> Supplier (allowed supplier list + optional supplier-specific fields)
+model ProductSupplier {
+  id           String  @id @default(uuid())
+  tenantId     String
+  productId    String
+  supplierId   String
+  supplierSku  String?
+  leadTimeDays Int? // for ETA calculations
+  preferred    Boolean @default(false)
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([productId, supplierId], name: "uq_product_supplier")
+  @@index([tenantId])
+}
+
+// =====================
+// Purchase Orders
+// =====================
+model PurchaseOrder {
+  id                   String    @id @default(uuid())
+  tenantId             String
+  poNumber             String // human-friendly; unique per tenant
+  supplierId           String
+  warehouseId          String
+  status               POStatus  @default(draft)
+  expectedDeliveryDate DateTime?
+  notes                String?
+
+  currency String? @db.VarChar(3) // default currency for lines (can be overridden on item if needed)
+
+  // audit
+  createdByUserId String?
+  createdBy       User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  supplier  Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  warehouse Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  items     PurchaseOrderItem[]
+  txns      InventoryTxn[] // optional: link PO to its txns via reference fields below
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, poNumber], name: "uq_po_number_per_tenant")
+  @@index([tenantId])
+  @@index([supplierId])
+  @@index([warehouseId])
+}
+
+model PurchaseOrderItem {
+  id              String   @id @default(uuid())
+  purchaseOrderId String
+  productId       String
+  quantity        Int
+  unitPrice       Decimal? @db.Decimal(12, 2)
+  currency        String?  @db.VarChar(3) // if null, inherit PO currency
+  notes           String?
+
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  // Optionally track receiving progress
+  receivedQty Int @default(0)
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+}
+
+// =====================
+// Stock Ledger (append-only)
+// =====================
+model InventoryTxn {
+  id          String           @id @default(uuid())
+  tenantId    String
+  productId   String
+  warehouseId String
+  qtyDelta    Int // positive or negative change
+  state       StockState // IN_TRANSIT, ON_HAND, RESERVED
+  type        InventoryTxnType
+  reason      String? // free-text reason
+
+  // Soft reference to a document (PO, adjustment record, etc.)
+  refType String? // e.g., "PO"
+  refId   String? // e.g., PurchaseOrder.id
+
+  // audit
+  createdByUserId String?
+  createdBy       User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt     DateTime        @default(now())
+  PurchaseOrder PurchaseOrder[]
+
+  @@index([tenantId])
+  @@index([productId])
+  @@index([warehouseId])
+  @@index([state])
+  @@index([type])
 }

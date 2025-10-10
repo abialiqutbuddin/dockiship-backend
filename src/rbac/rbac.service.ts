@@ -147,6 +147,46 @@ export class RbacService {
     return this.listPermissionsForRole(roleId, tenantId);
   }
 
+  // update role and permissions
+async updateRoleAndPermissions(
+  tenantId: string,
+  roleId: string,
+  dto: { name?: string; description?: string; permissionNames: string[] }
+) {
+  await this.assertRoleInTenant(roleId, tenantId);
+
+  // Validate permissions exist and collect IDs
+  const permissionIds = await this.getPermissionIdsByNames(dto.permissionNames);
+
+  try {
+    // One transaction: update role meta, replace links, then return names
+    await this.prisma.$transaction([
+      this.prisma.role.update({
+        where: { id: roleId },
+        data: {
+          // only send fields if provided to avoid nulling
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.description !== undefined ? { description: dto.description } : {}),
+        },
+      }),
+      this.prisma.rolePermission.deleteMany({ where: { roleId } }),
+      this.prisma.rolePermission.createMany({
+        data: permissionIds.map((pid) => ({ roleId, permissionId: pid })),
+        skipDuplicates: true,
+      }),
+    ]);
+  } catch (e: any) {
+    if (e.code === 'P2002') {
+      // respects @@unique([name, tenantId])
+      throw new BadRequestException('Role with this name already exists');
+    }
+    throw e;
+  }
+
+  // Return the updated permission names (sorted)
+  return this.listPermissionsForRole(roleId, tenantId);
+}
+
   // REMOVE given permissions
   async removePermissionsFromRole(roleId: string, tenantId: string, permissionNames: string[]) {
     await this.assertRoleInTenant(roleId, tenantId);

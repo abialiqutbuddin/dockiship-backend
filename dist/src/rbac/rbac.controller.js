@@ -24,6 +24,7 @@ const tenant_decorator_1 = require("../common/decorators/tenant.decorator");
 const create_role_dto_1 = require("./dto/create-role.dto");
 const update_role_dto_1 = require("./dto/update-role.dto");
 const update_role_permissions_dto_1 = require("./dto/update-role-permissions.dto");
+const update_role_and_perm_dto_1 = require("./dto/update-role-and-perm.dto");
 let RbacController = class RbacController {
     constructor(rbac) {
         this.rbac = rbac;
@@ -65,6 +66,9 @@ let RbacController = class RbacController {
     // REPLACE permissions (overwrite set)
     async setRolePermissions(tenantId, roleId, dto) {
         return this.rbac.setPermissionsForRole(roleId, tenantId, dto.permissionNames);
+    }
+    updateRoleAndPermissions(roleId, dto, tenantId) {
+        return this.rbac.updateRoleAndPermissions(tenantId, roleId, dto);
     }
     // REMOVE specific permissions
     async removeRolePermissions(tenantId, roleId, dto) {
@@ -152,6 +156,15 @@ __decorate([
     __metadata("design:paramtypes", [String, String, update_role_permissions_dto_1.UpdateRolePermissionsDto]),
     __metadata("design:returntype", Promise)
 ], RbacController.prototype, "setRolePermissions", null);
+__decorate([
+    (0, common_1.Patch)(':roleId'),
+    __param(0, (0, common_1.Param)('roleId')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, tenant_decorator_1.TenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_role_and_perm_dto_1.UpdateRoleAndPermissionsDto, String]),
+    __metadata("design:returntype", void 0)
+], RbacController.prototype, "updateRoleAndPermissions", null);
 __decorate([
     (0, common_1.Delete)(':roleId/permissions'),
     (0, permissions_decorator_1.Permissions)('role.manage'),

@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   UseGuards,
@@ -19,11 +20,12 @@ import { TenantId } from '../common/decorators/tenant.decorator';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateRolePermissionsDto } from './dto/update-role-permissions.dto';
+import { UpdateRoleAndPermissionsDto } from './dto/update-role-and-perm.dto';
 
 @Controller('roles')
 @UseGuards(TenantGuard, JwtAuthGuard, RbacGuard)
 export class RbacController {
-  constructor(private readonly rbac: RbacService) {}
+  constructor(private readonly rbac: RbacService) { }
 
   // Create role with optional permissions in one shot
   @Post()
@@ -112,6 +114,16 @@ export class RbacController {
     @Body() dto: UpdateRolePermissionsDto,
   ) {
     return this.rbac.setPermissionsForRole(roleId, tenantId, dto.permissionNames);
+  }
+
+  @Patch(':roleId')
+  updateRoleAndPermissions(
+    @Param('roleId') roleId: string,
+    @Body() dto: UpdateRoleAndPermissionsDto,
+    // e.g. custom decorator pulling from request context
+    @TenantId() tenantId: string,
+  ) {
+    return this.rbac.updateRoleAndPermissions(tenantId, roleId, dto);
   }
 
   // REMOVE specific permissions
