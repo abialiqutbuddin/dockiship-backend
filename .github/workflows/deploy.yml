@@ -1,4 +1,4 @@
-name: Deploy DockiShip Backend (PM2) — git pull
+name: Deploy DockiShip Backend (PM2) — git pull (safe)
 
 on:
   push:
@@ -32,58 +32,74 @@ jobs:
             BRANCH="main"
             NODE_VERSION="20"
 
-            # Ensure repo dir exists (you said it already does)
+            # Ensure repo folder exists (clone if missing)
             if [ ! -d "$APP_DIR/.git" ]; then
-              echo "Directory exists but not a git repo. Cloning fresh..."
-              rm -rf "$APP_DIR"
-              git clone --depth 1 --branch "$BRANCH" https://github.com/abialiqutbuddin/dockiship-backend "$APP_DIR"
+              echo "Cloning repo (fresh, non-destructive to home)..."
+              rm -rf "$APP_DIR" || true
+              git clone --depth 1 --branch "$BRANCH" \
+                https://github.com/abialiqutbuddin/dockiship-backend "$APP_DIR"
             fi
 
             cd "$APP_DIR"
 
-            # Make sure remote is set to public HTTPS (no keys needed)
+            # Make sure origin points to your public HTTPS remote
             if ! git remote get-url origin | grep -q "github.com/abialiqutbuddin/dockiship-backend"; then
               git remote set-url origin https://github.com/abialiqutbuddin/dockiship-backend
             fi
 
-            # Pull latest (safe hard reset to origin/main)
-            git fetch --all --prune
+            # Pull latest without deleting untracked files (keeps .env, node_modules)
+            git fetch origin "$BRANCH" --prune
             git checkout "$BRANCH"
-            # Preserve .env then hard reset everything else
-            if [ -f ".env" ]; then cp .env /tmp/.env.deploy.backup; fi
-            git reset --hard "origin/$BRANCH"
-            git clean -fdx
-            if [ -f "/tmp/.env.deploy.backup" ]; then mv /tmp/.env.deploy.backup .env; fi
+            git pull --ff-only origin "$BRANCH"
 
-            # Load nvm and use Node 20
+            # Load nvm and select Node
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             nvm install "$NODE_VERSION"
             nvm use "$NODE_VERSION"
 
-            # Install deps, build, prune dev
-            npm ci
-            npm run build
-            npm prune --omit=dev || true
+            # Prepare env for tools if present (kept in place)
+            if [ -f ".env" ]; then
+              set -a; . ./.env; set +a
+            fi
 
-            # Prisma (if present) or TypeORM
+            # Install deps without nuking node_modules:
+            # - if node_modules exists, just add what's missing
+            # - if it's absent (first run), do a clean install
+            if [ -d node_modules ]; then
+              npm install --no-audit --no-fund
+            else
+              npm ci --no-audit --no-fund
+            fi
+
+            # Generate Prisma client if applicable (safe no-op otherwise)
+            npx prisma generate || true
+
+            # Build without requiring global Nest CLI
+            npx nest build || npx tsc -p tsconfig.build.json
+
+            # (Optional) strip dev deps after build if you want a lighter runtime
+            # npm prune --omit=dev || true
+
+            # Run migrations
             if [ -d "prisma" ] && [ -f "node_modules/.bin/prisma" ]; then
               echo "Running Prisma migrations..."
               npx prisma migrate deploy
             elif npm run | grep -qE "typeorm:migrate"; then
-              echo "Running TypeORM migrations via 'typeorm:migrate'..."
+              echo "Running TypeORM migrations via script 'typeorm:migrate'..."
               npm run typeorm:migrate
             elif npm run | grep -qE "migration:run"; then
-              echo "Running TypeORM migrations via 'migration:run'..."
+              echo "Running TypeORM migrations via script 'migration:run'..."
               npm run migration:run
             else
-              echo "No migration step detected. Skipping."
+              echo "No migration task found. Skipping."
             fi
 
-            # PM2 reload/start
+            # PM2 start/reload
             if [ -f "ecosystem.config.js" ]; then
               pm2 startOrReload ecosystem.config.js --update-env
             else
               pm2 start dist/main.js --name dockiship-backend || pm2 restart dockiship-backend
             fi
+
             pm2 save
