@@ -1,4 +1,4 @@
-name: Deploy DockiShip Backend (PM2)
+name: Deploy DockiShip Backend (PM2) — git pull
 
 on:
   push:
@@ -17,22 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Upload files to VM
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: |
-            .
-          target: dockiship-backend   # resolves to ~/dockiship-backend
-          strip_components: 0
-
-      - name: Build, migrate, and restart (PM2 via nvm)
+      - name: Deploy on VM via SSH (git pull + build + pm2)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -43,27 +28,45 @@ jobs:
           script: |
             set -euo pipefail
 
-            # Load nvm for non-interactive shell
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            APP_DIR="$HOME/dockiship-backend"
+            BRANCH="main"
+            NODE_VERSION="20"
 
-            # Ensure Node 20 (no sudo) and use it
-            nvm install 20
-            nvm use 20
-
-            cd ~/dockiship-backend
-
-            # Load env for tooling (DATABASE_URL, etc.)
-            if [ -f ".env" ]; then
-              set -a; . ./.env; set +a
+            # Ensure repo dir exists (you said it already does)
+            if [ ! -d "$APP_DIR/.git" ]; then
+              echo "Directory exists but not a git repo. Cloning fresh..."
+              rm -rf "$APP_DIR"
+              git clone --depth 1 --branch "$BRANCH" https://github.com/abialiqutbuddin/dockiship-backend "$APP_DIR"
             fi
 
-            # Install deps & build
+            cd "$APP_DIR"
+
+            # Make sure remote is set to public HTTPS (no keys needed)
+            if ! git remote get-url origin | grep -q "github.com/abialiqutbuddin/dockiship-backend"; then
+              git remote set-url origin https://github.com/abialiqutbuddin/dockiship-backend
+            fi
+
+            # Pull latest (safe hard reset to origin/main)
+            git fetch --all --prune
+            git checkout "$BRANCH"
+            # Preserve .env then hard reset everything else
+            if [ -f ".env" ]; then cp .env /tmp/.env.deploy.backup; fi
+            git reset --hard "origin/$BRANCH"
+            git clean -fdx
+            if [ -f "/tmp/.env.deploy.backup" ]; then mv /tmp/.env.deploy.backup .env; fi
+
+            # Load nvm and use Node 20
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            nvm install "$NODE_VERSION"
+            nvm use "$NODE_VERSION"
+
+            # Install deps, build, prune dev
             npm ci
             npm run build
             npm prune --omit=dev || true
 
-            # Migrations (Prisma first, then TypeORM fallbacks)
+            # Prisma (if present) or TypeORM
             if [ -d "prisma" ] && [ -f "node_modules/.bin/prisma" ]; then
               echo "Running Prisma migrations..."
               npx prisma migrate deploy
@@ -77,11 +80,10 @@ jobs:
               echo "No migration step detected. Skipping."
             fi
 
-            # PM2 managed start/reload
+            # PM2 reload/start
             if [ -f "ecosystem.config.js" ]; then
               pm2 startOrReload ecosystem.config.js --update-env
             else
               pm2 start dist/main.js --name dockiship-backend || pm2 restart dockiship-backend
             fi
-
             pm2 save
