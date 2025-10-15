@@ -16,6 +16,8 @@ const user_module_1 = require("./users/user.module");
 const tenant_module_1 = require("./tenants/tenant.module");
 const rbac_module_1 = require("./rbac/rbac.module");
 const permissions_module_1 = require("./permissions/permissions.module");
+const supplier_module_1 = require("./inventory/suppliers/supplier.module");
+const warehouse_module_1 = require("./inventory/warehouse/warehouse.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -29,6 +31,8 @@ exports.AppModule = AppModule = __decorate([
             rbac_module_1.RbacModule,
             tenant_module_1.TenantsModule,
             permissions_module_1.PermissionsModule,
+            supplier_module_1.SupplierModule,
+            warehouse_module_1.WarehouseModule,
         ],
     })
 ], AppModule);

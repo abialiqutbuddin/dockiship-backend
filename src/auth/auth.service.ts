@@ -193,7 +193,7 @@ export class AuthService {
             { expiresIn: '15m' }
         );
 
-        const base = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const base = process.env.FRONTEND_URL || 'http://202.163.98.129:3000';
         const resetLink =
             tenantHint
                 ? `${base}/reset-password?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(tenantHint)}`
