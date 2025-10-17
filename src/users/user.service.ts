@@ -101,8 +101,8 @@ export class UserService {
             });
         }
 
-        const appName = process.env.APP_NAME || 'our app';
-        const base = process.env.FRONTEND_URL || 'http://203.215.170.100';
+        const appName = process.env.APP_NAME || 'DockiShip';
+        const base = 'http://203.215.170.100';
 
         if (isNewUser) {
             // NEW user -> send reset link to set their first password

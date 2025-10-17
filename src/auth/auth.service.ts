@@ -296,7 +296,7 @@ export class AuthService {
             { expiresIn: '15m' }
         );
 
-        const base = process.env.FRONTEND_URL || 'http://202.163.98.129';
+        const base = 'http://202.163.98.129';
         const resetLink =
             tenantHint
                 ? `${base}/reset-password?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(tenantHint)}`
