@@ -310,7 +310,7 @@ export class UserService {
             userId: m.userId,
             email: m.user.email,
             fullName: m.user.fullName,
-            isActive: m.user.isActive,
+            isActive: false,
             createdAt: m.user.createdAt,
             membershipId: m.id,
             status: m.status,
