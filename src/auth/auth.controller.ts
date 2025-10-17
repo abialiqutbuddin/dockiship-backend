@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { MemberLoginDto, OwnerLoginDto } from './dto/login.dto';
 import { RegisterOwnerDto } from './dto/register-owner.dto';
@@ -45,6 +45,14 @@ export class AuthController {
   @Post('password/change')
   changePassword(@Body() dto: ChangePasswordDto) {
     return this.auth.changeOwnPassword(dto.currentPassword, dto.newPassword);
+  }
+
+    // ✅ Tenant-scoped token validation + profile
+  @UseGuards(JwtAuthGuard)
+  @Get('check')
+  async check(@Req() req: any) {
+    // req.user is populated by JwtStrategy.validate(payload)
+    return this.auth.check(req.user);
   }
 
 }

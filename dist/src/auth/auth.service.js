@@ -60,6 +60,61 @@ let AuthService = class AuthService {
     toSafeUser(u) {
         return { id: u.id, email: u.email, fullName: u.fullName };
     }
+    async check(payload) {
+        // Must be an authenticated request (JwtAuthGuard guarantees a decoded payload)
+        if (!payload?.sub || !payload?.email) {
+            throw new common_1.UnauthorizedException('Invalid token');
+        }
+        // Require tenant scoping for this endpoint (per your ask: "for that tenant only")
+        if (!payload.tenantId) {
+            // If you prefer to allow global, change this to return a global profile.
+            throw new common_1.BadRequestException('Token is not tenant-scoped');
+        }
+        // Get user basic info
+        const user = await this.prisma.user.findUnique({
+            where: { id: payload.sub },
+            select: { id: true, email: true, fullName: true, isActive: true },
+        });
+        if (!user || !user.isActive) {
+            throw new common_1.UnauthorizedException('User not active');
+        }
+        // Confirm membership for the tenant in the token, and gather roles/perms fresh
+        const membership = await this.prisma.userTenant.findUnique({
+            where: { userId_tenantId_unique: { userId: user.id, tenantId: payload.tenantId } },
+            include: {
+                //status: true, // if your schema exposes it directly; otherwise remove
+                roles: {
+                    include: {
+                        role: {
+                            include: { rolePerms: { include: { permission: true } } },
+                        },
+                    },
+                },
+                tenant: { select: { id: true, name: true, slug: true } },
+            },
+        });
+        if (!membership) {
+            throw new common_1.UnauthorizedException('No membership for this tenant');
+        }
+        // Ensure active membership
+        // If your model has membership.status: 'active' | 'invited' | ... (as seen in memberLogin)
+        // adjust the check accordingly:
+        // @ts-ignore – only if TypeScript complains about "status"
+        if (membership.status !== 'active') {
+            throw new common_1.UnauthorizedException('Membership is not active for this tenant');
+        }
+        const roles = membership.roles.map((r) => r.role.name);
+        const perms = membership.roles.flatMap((r) => r.role.rolePerms.map((rp) => rp.permission.name));
+        // Build a consistent response
+        return {
+            valid: true,
+            typ: payload.typ, // 'owner' | 'member'
+            user: this.toSafeUser(user), // { id, email, fullName }
+            tenant: membership.tenant, // { id, name, slug }
+            roles,
+            perms,
+        };
+    }
     // -------- OWNER REGISTER (GLOBAL USER ONLY) ----------
     async ownerRegister(email, password, fullName) {
         const normEmail = email.trim().toLowerCase();

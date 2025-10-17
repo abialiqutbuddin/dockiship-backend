@@ -14,7 +14,7 @@ async function bootstrap() {
     const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
     const HOST = '0.0.0.0';
     await app.listen(PORT, HOST);
-    console.log(`🚀 API on http://${HOST}:${PORT} (LAN reachable)`);
+    console.log(`API on http://${HOST}:${PORT} (LAN reachable)`);
 }
 bootstrap();
 //# sourceMappingURL=main.js.map

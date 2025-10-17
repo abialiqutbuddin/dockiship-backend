@@ -48,6 +48,11 @@ let AuthController = class AuthController {
     changePassword(dto) {
         return this.auth.changeOwnPassword(dto.currentPassword, dto.newPassword);
     }
+    // ✅ Tenant-scoped token validation + profile
+    async check(req) {
+        // req.user is populated by JwtStrategy.validate(payload)
+        return this.auth.check(req.user);
+    }
 };
 exports.AuthController = AuthController;
 __decorate([
@@ -93,6 +98,14 @@ __decorate([
     __metadata("design:paramtypes", [password_dto_1.ChangePasswordDto]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "changePassword", null);
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.Get)('check'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "check", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)('auth'),
     __metadata("design:paramtypes", [auth_service_1.AuthService])
