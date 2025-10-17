@@ -81,7 +81,6 @@ let AuthService = class AuthService {
         return { message: 'Owner registered successfully', user, access_token };
     }
     // -------- OWNER LOGIN ----------
-    // -------- OWNER LOGIN ----------
     async ownerLogin(email, password, tenantId) {
         const user = await this.prisma.user.findUnique({
             where: { email: email.toLowerCase() },
@@ -139,6 +138,7 @@ let AuthService = class AuthService {
                 needTenantSelection: false,
                 user: this.toSafeUser(user),
                 access_token,
+                ownedTenants: [],
             };
         }
         // Otherwise behave as before (ask UI to let them pick a tenant)
