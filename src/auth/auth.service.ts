@@ -49,59 +49,88 @@ export class AuthService {
     }
 
     // -------- OWNER LOGIN ----------
-    async ownerLogin(email: string, password: string, tenantId?: string) {
-        const user = await this.prisma.user.findUnique({
-            where: { email: email.toLowerCase() },
-            select: { id: true, email: true, fullName: true, isActive: true, passwordHash: true },
-        });
-        if (!user || !user.isActive) throw new UnauthorizedException('Invalid credentials');
+async ownerLogin(email: string, password: string, tenantId?: string) {
+  const user = await this.prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+    select: { id: true, email: true, fullName: true, isActive: true, passwordHash: true },
+  });
+  if (!user || !user.isActive) throw new UnauthorizedException('Invalid credentials');
 
-        const ok = await bcrypt.compare(password, user.passwordHash);
-        if (!ok) throw new UnauthorizedException('Invalid credentials');
+  const ok = await bcrypt.compare(password, user.passwordHash);
+  if (!ok) throw new UnauthorizedException('Invalid credentials');
 
-        if (tenantId) {
-            const membership = await this.prisma.userTenant.findUnique({
-                where: { userId_tenantId_unique: { userId: user.id, tenantId } },
-                include: {
-                    roles: {
-                        include: {
-                            role: { include: { rolePerms: { include: { permission: true } } } },
-                        },
-                    },
-                    tenant: { select: { id: true, name: true, slug: true } },
-                },
-            });
-            if (!membership || !membership.isOwner) {
-                throw new UnauthorizedException('Not an owner of this tenant');
-            }
-
-            const roles = membership.roles.map((r) => r.role.name);
-            const perms = membership.roles.flatMap((r) => this.flattenPerms(r.role.rolePerms));
-
-            const token = this.jwt.sign(
-                { sub: user.id, email: user.email, tenantId: membership.tenant.id, roles, perms, typ: 'owner' },
-                { expiresIn: '1h' },
-            );
-
-            return {
-                access_token: token,
-                user: this.toSafeUser(user),
-                tenant: membership.tenant,
-            };
-        }
-
-        const owned = await this.prisma.userTenant.findMany({
-            where: { userId: user.id, isOwner: true, status: 'active' },
-            include: { tenant: { select: { id: true, name: true, slug: true } } },
-            orderBy: { tenant: { name: 'asc' } },
-        });
-
-        return {
-            needTenantSelection: true,
-            user: this.toSafeUser(user),
-            ownedTenants: owned.map((m) => m.tenant),
-        };
+  // If a tenantId was provided, proceed with tenant-scoped login
+  if (tenantId) {
+    const membership = await this.prisma.userTenant.findUnique({
+      where: { userId_tenantId_unique: { userId: user.id, tenantId } },
+      include: {
+        roles: {
+          include: {
+            role: { include: { rolePerms: { include: { permission: true } } } },
+          },
+        },
+        tenant: { select: { id: true, name: true, slug: true } },
+      },
+    });
+    if (!membership || !membership.isOwner) {
+      throw new UnauthorizedException('Not an owner of this tenant');
     }
+
+    const roles = membership.roles.map((r) => r.role.name);
+    const perms = membership.roles.flatMap((r) =>
+      r.role.rolePerms.map((rp) => rp.permission.name),
+    );
+
+    const token = this.jwt.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        tenantId: membership.tenant.id,
+        roles,
+        perms,
+        typ: 'owner', // tenant-scoped owner
+      },
+      { expiresIn: '1h' },
+    );
+
+    return {
+      access_token: token,
+      user: this.toSafeUser(user),
+      tenant: membership.tenant,
+    };
+  }
+
+  // No tenantId provided → list owned tenants
+  const owned = await this.prisma.userTenant.findMany({
+    where: { userId: user.id, isOwner: true, status: 'active' },
+    include: { tenant: { select: { id: true, name: true, slug: true } } },
+    orderBy: { tenant: { name: 'asc' } },
+  });
+
+  // 🔸 If owner has zero tenants, return a global token so they can create one
+  if (owned.length === 0) {
+    // Keep this token "global owner" (no tenantId yet). You can gate tenant creation
+    // in your tenant module by checking typ === 'owner-global' (or add a specific perm).
+    const access_token = this.jwt.sign(
+      { sub: user.id, email: user.email, typ: 'owner-global' },
+      { expiresIn: '1h' },
+    );
+
+    return {
+      needTenantSelection: false,
+      user: this.toSafeUser(user),
+      access_token, 
+      ownedTenants: [],
+    };
+  }
+
+  // Otherwise behave as before (ask UI to let them pick a tenant)
+  return {
+    needTenantSelection: true,
+    user: this.toSafeUser(user),
+    ownedTenants: owned.map((m) => m.tenant),
+  };
+}
 
     // -------- MEMBER LOGIN ----------
     async memberLogin(
@@ -199,9 +228,7 @@ export class AuthService {
                 ? `${base}/reset-password?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(tenantHint)}`
                 : `${base}/reset-password?token=${encodeURIComponent(token)}`;
 
-        //send the email (implement your EmailService)
-        //Keep it generic; works for both owner/member.
-        //Example:
+        //send the email
         await this.email.sendMail(
             user.email,
             'Reset your password',

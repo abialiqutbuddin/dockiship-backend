@@ -154,6 +154,9 @@ model Role {
   rolePerms   RolePermission[]
   memberRoles UserTenantRole[]
 
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
   @@unique([name, tenantId], name: "name_tenantId")
   @@index([tenantId])
 }
@@ -199,10 +202,10 @@ model UserTenantRole {
 // =====================
 model Plan {
   id          String  @id @default(uuid())
-  code        String  @unique // e.g. "FREE", "STARTER", "PRO"
+  code        String  @unique 
   name        String
-  stripePrice String? // Stripe price_id
-  stripeProd  String? // Stripe product_id
+  stripePrice String? 
+  stripeProd  String? 
 
   planFeatures PlanFeature[]
   Subscription Subscription[]

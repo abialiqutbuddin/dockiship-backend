@@ -81,6 +81,7 @@ let AuthService = class AuthService {
         return { message: 'Owner registered successfully', user, access_token };
     }
     // -------- OWNER LOGIN ----------
+    // -------- OWNER LOGIN ----------
     async ownerLogin(email, password, tenantId) {
         const user = await this.prisma.user.findUnique({
             where: { email: email.toLowerCase() },
@@ -91,6 +92,7 @@ let AuthService = class AuthService {
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok)
             throw new common_1.UnauthorizedException('Invalid credentials');
+        // If a tenantId was provided, proceed with tenant-scoped login
         if (tenantId) {
             const membership = await this.prisma.userTenant.findUnique({
                 where: { userId_tenantId_unique: { userId: user.id, tenantId } },
@@ -107,19 +109,39 @@ let AuthService = class AuthService {
                 throw new common_1.UnauthorizedException('Not an owner of this tenant');
             }
             const roles = membership.roles.map((r) => r.role.name);
-            const perms = membership.roles.flatMap((r) => this.flattenPerms(r.role.rolePerms));
-            const token = this.jwt.sign({ sub: user.id, email: user.email, tenantId: membership.tenant.id, roles, perms, typ: 'owner' }, { expiresIn: '1h' });
+            const perms = membership.roles.flatMap((r) => r.role.rolePerms.map((rp) => rp.permission.name));
+            const token = this.jwt.sign({
+                sub: user.id,
+                email: user.email,
+                tenantId: membership.tenant.id,
+                roles,
+                perms,
+                typ: 'owner', // tenant-scoped owner
+            }, { expiresIn: '1h' });
             return {
                 access_token: token,
                 user: this.toSafeUser(user),
                 tenant: membership.tenant,
             };
         }
+        // No tenantId provided → list owned tenants
         const owned = await this.prisma.userTenant.findMany({
             where: { userId: user.id, isOwner: true, status: 'active' },
             include: { tenant: { select: { id: true, name: true, slug: true } } },
             orderBy: { tenant: { name: 'asc' } },
         });
+        // 🔸 If owner has zero tenants, return a global token so they can create one
+        if (owned.length === 0) {
+            // Keep this token "global owner" (no tenantId yet). You can gate tenant creation
+            // in your tenant module by checking typ === 'owner-global' (or add a specific perm).
+            const access_token = this.jwt.sign({ sub: user.id, email: user.email, typ: 'owner-global' }, { expiresIn: '1h' });
+            return {
+                needTenantSelection: false,
+                user: this.toSafeUser(user),
+                access_token,
+            };
+        }
+        // Otherwise behave as before (ask UI to let them pick a tenant)
         return {
             needTenantSelection: true,
             user: this.toSafeUser(user),
@@ -193,13 +215,11 @@ let AuthService = class AuthService {
         }
         const token = this.jwt.sign({ sub: user.id, email: user.email }, // no tenant needed to reset a global password
         { expiresIn: '15m' });
-        const base = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const base = process.env.FRONTEND_URL || 'http://202.163.98.129:3000';
         const resetLink = tenantHint
             ? `${base}/reset-password?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(tenantHint)}`
             : `${base}/reset-password?token=${encodeURIComponent(token)}`;
-        //send the email (implement your EmailService)
-        //Keep it generic; works for both owner/member.
-        //Example:
+        //send the email
         await this.email.sendMail(user.email, 'Reset your password', `<p>Hello ${user.fullName || ''}</p>
        <p>Click below to reset your password:</p>
        <a href="${resetLink}" target="_blank">Reset Password</a>

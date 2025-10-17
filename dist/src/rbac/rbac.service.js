@@ -100,6 +100,8 @@ let RbacService = class RbacService {
             id: r.id,
             name: r.name,
             description: r.description,
+            createdAt: r.createdAt,
+            updatedAt: r.updatedAt,
             permissions: r.rolePerms.map((rp) => rp.permission.name),
         }));
     }
@@ -107,7 +109,7 @@ let RbacService = class RbacService {
     async getRoleIds(tenantId) {
         return this.prisma.role.findMany({
             where: { tenantId },
-            select: { id: true, name: true },
+            select: { id: true, name: true, createdAt: true, updatedAt: true },
             orderBy: { name: 'asc' },
         });
     }
