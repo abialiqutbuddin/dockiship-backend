@@ -12,6 +12,7 @@ type MemberRow = {
     isActive: boolean;
     membershipId: string;
     status: string;
+    createdAt: Date;
     roles: string[];
 };
 
@@ -310,6 +311,7 @@ export class UserService {
             email: m.user.email,
             fullName: m.user.fullName,
             isActive: m.user.isActive,
+            createdAt: m.user.createdAt,
             membershipId: m.id,
             status: m.status,
             roles: m.roles.map((r) => r.role.name),
