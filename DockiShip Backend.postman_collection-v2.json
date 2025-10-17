@@ -490,6 +490,45 @@
       "response": []
     },
     {
+  "name": "Auth: Check (tenant-scoped)",
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('200 OK', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+          "const res = pm.response.json() || {};",
+          "pm.test('has valid=true', () => pm.expect(res.valid).to.eql(true));",
+          "pm.test('has user', () => pm.expect(res.user && res.user.id && res.user.email).to.be.ok);",
+          "pm.test('has tenant (tenant-scoped token)', () => pm.expect(res.tenant && res.tenant.id).to.be.ok);",
+          "pm.test('roles/perms arrays', () => {",
+          "  pm.expect(Array.isArray(res.roles)).to.be.true;",
+          "  pm.expect(Array.isArray(res.perms)).to.be.true;",
+          "});",
+          "// Optionally cache fields if you want",
+          "if (res.tenant && res.tenant.id) pm.globals.set('tenant_id', res.tenant.id);"
+        ]
+      }
+    }
+  ],
+  "request": {
+    "method": "GET",
+    "header": [
+      {
+        "key": "Authorization",
+        "value": "Bearer {{access_token}}"
+      }
+    ],
+    "url": {
+      "raw": "{{base_url}}/auth/check",
+      "host": ["{{base_url}}"],
+      "path": ["auth", "check"]
+    }
+  },
+  "response": []
+},
+    {
       "name": "4) Permissions: List All (Owner has access)",
       "request": {
         "method": "GET",
