@@ -17,6 +17,6 @@ async function bootstrap() {
   const HOST = '0.0.0.0';
   await app.listen(PORT, HOST);
 
-  console.log(`🚀 API on http://${HOST}:${PORT} (LAN reachable)`);
+  console.log(`API on http://${HOST}:${PORT} (LAN reachable)`);
 }
 bootstrap();
