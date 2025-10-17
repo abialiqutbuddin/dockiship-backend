@@ -224,6 +224,37 @@ export class UserService {
         return { ok: true };
     }
 
+      /**
+   * Delete the user's membership in a tenant (and its role links).
+   * Does NOT delete the global user account.
+   * Guards you from removing an owner membership (optional safety).
+   */
+  async removeUserFromTenant(userId: string, tenantId: string) {
+    // Ensure membership exists
+    const m = await this.prisma.userTenant.findUnique({
+      where: { userId_tenantId_unique: { userId, tenantId } },
+      include: { tenant: true },
+    });
+    if (!m) {
+      throw new NotFoundException('Membership not found for this tenant');
+    }
+
+    // Optional: prevent deleting an owner’s own last owner membership, etc.
+    // If you track ownership on membership, check it here (pseudo):
+    // if (m.isOwner) throw new BadRequestException('Cannot remove owner membership');
+
+    await this.prisma.$transaction(async (tx) => {
+      // remove role links for this membership
+      await tx.userTenantRole.deleteMany({ where: { userTenantId: m.id } });
+      // delete membership row
+      await tx.userTenant.delete({
+        where: { userId_tenantId_unique: { userId, tenantId } },
+      });
+    });
+
+    return { ok: true };
+  }
+
     async addRolesForUserInTenant(userId: string, tenantId: string, roleIds: string[]) {
         const membership = await this.getMembershipOrThrow(userId, tenantId);
 

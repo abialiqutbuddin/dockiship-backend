@@ -46,6 +46,16 @@ export class UserController {
     });
   }
 
+    @Delete(':userId')
+  @Roles('Admin','Owner')
+  @Permissions('user.manage')
+  async removeFromTenant(
+    @TenantId() tenantId: string,
+    @Param('userId') userId: string,
+  ) {
+    return this.users.removeUserFromTenant(userId, tenantId);
+  }
+
   @Post()
   @Roles('Admin','Owner')
   @Permissions('user.manage')
