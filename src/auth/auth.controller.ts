@@ -47,7 +47,7 @@ export class AuthController {
     return this.auth.changeOwnPassword(dto.currentPassword, dto.newPassword);
   }
 
-    // ✅ Tenant-scoped token validation + profile
+  // ✅ Tenant-scoped token validation + profile
   @UseGuards(JwtAuthGuard)
   @Get('check')
   async check(@Req() req: any) {

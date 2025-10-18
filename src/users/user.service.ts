@@ -4,6 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 type MemberRow = {
     userId: string;
@@ -224,36 +225,36 @@ export class UserService {
         return { ok: true };
     }
 
-      /**
-   * Delete the user's membership in a tenant (and its role links).
-   * Does NOT delete the global user account.
-   * Guards you from removing an owner membership (optional safety).
-   */
-  async removeUserFromTenant(userId: string, tenantId: string) {
-    // Ensure membership exists
-    const m = await this.prisma.userTenant.findUnique({
-      where: { userId_tenantId_unique: { userId, tenantId } },
-      include: { tenant: true },
-    });
-    if (!m) {
-      throw new NotFoundException('Membership not found for this tenant');
+    /**
+ * Delete the user's membership in a tenant (and its role links).
+ * Does NOT delete the global user account.
+ * Guards you from removing an owner membership (optional safety).
+ */
+    async removeUserFromTenant(userId: string, tenantId: string) {
+        // Ensure membership exists
+        const m = await this.prisma.userTenant.findUnique({
+            where: { userId_tenantId_unique: { userId, tenantId } },
+            include: { tenant: true },
+        });
+        if (!m) {
+            throw new NotFoundException('Membership not found for this tenant');
+        }
+
+        // Optional: prevent deleting an owner’s own last owner membership, etc.
+        // If you track ownership on membership, check it here (pseudo):
+        // if (m.isOwner) throw new BadRequestException('Cannot remove owner membership');
+
+        await this.prisma.$transaction(async (tx) => {
+            // remove role links for this membership
+            await tx.userTenantRole.deleteMany({ where: { userTenantId: m.id } });
+            // delete membership row
+            await tx.userTenant.delete({
+                where: { userId_tenantId_unique: { userId, tenantId } },
+            });
+        });
+
+        return { ok: true };
     }
-
-    // Optional: prevent deleting an owner’s own last owner membership, etc.
-    // If you track ownership on membership, check it here (pseudo):
-    // if (m.isOwner) throw new BadRequestException('Cannot remove owner membership');
-
-    await this.prisma.$transaction(async (tx) => {
-      // remove role links for this membership
-      await tx.userTenantRole.deleteMany({ where: { userTenantId: m.id } });
-      // delete membership row
-      await tx.userTenant.delete({
-        where: { userId_tenantId_unique: { userId, tenantId } },
-      });
-    });
-
-    return { ok: true };
-  }
 
     async addRolesForUserInTenant(userId: string, tenantId: string, roleIds: string[]) {
         const membership = await this.getMembershipOrThrow(userId, tenantId);
@@ -349,5 +350,47 @@ export class UserService {
         }));
 
         return { data, total, page, pageSize };
+    }
+
+    async updateUserInTenant(userId: string, dto: UpdateUserDto) {
+        // Ensure the user actually belongs to this tenant
+        const user = await this.prisma.user.findUnique({
+             where: { id: userId },
+             //include: { user: true },
+         });
+
+        // Build partial update; avoid sending undefined fields
+        const data: any = {};
+        if (dto.fullName !== undefined) data.fullName = dto.fullName.trim();
+        if (dto.phone !== undefined) data.phone = dto.phone.trim();
+        if (dto.country !== undefined) data.country = dto.country.trim().toUpperCase();
+        if (dto.isActive !== undefined) data.isActive = dto.isActive;
+
+        if (Object.keys(data).length === 0) {
+            // nothing to update — return current record
+            return {
+                id: user?.id,
+                email: user?.email,
+                fullName: user?.fullName,
+                phone: user?.phone ?? null,
+                country: user?.country ?? null,
+                //isActive: user.isActive,
+            };
+        }
+
+        const updated = await this.prisma.user.update({
+            where: { id: userId },
+            data,
+            select: {
+                id: true,
+                email: true,
+                fullName: true,
+                phone: true,
+                country: true,
+                //isActive: true,
+            },
+        });
+
+        return updated;
     }
 }

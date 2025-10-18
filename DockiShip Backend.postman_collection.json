@@ -1,0 +1,1162 @@
+{
+	"info": {
+		"_postman_id": "e0ac98b8-122e-4c96-b5c8-0fecffe8e770",
+		"name": "DockiShip Backend Copy",
+		"description": "Full RBAC + multi-tenant API test flow for DockiShip Backend (Option B: owner registers globally, then creates tenants). Includes globals + auto token/tenant capture.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "35038923"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "1) Owner Register (Global User Only)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Owner register 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"// Save owner access token (global, not tenant-scoped yet)",
+									"if (res.access_token) pm.globals.set('access_token', res.access_token);",
+									"if (res.data && res.data.access_token) pm.globals.set('access_token', res.data.access_token);",
+									"// Clear any old tenant-scoped values",
+									"pm.globals.unset('tenant_id');",
+									"pm.globals.unset('role_id');",
+									"pm.globals.unset('member_user_id');"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"fullName\": \"Owner User\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/owner/register",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"owner",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3) Owner Login (Tenant-scoped)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Owner login 200', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"if (res.access_token) pm.globals.set('access_token', res.access_token);",
+									"if (res.tenant && res.tenant.id) pm.globals.set('tenant_id', res.tenant.id);",
+									"if (res.needTenantSelection && Array.isArray(res.ownedTenants) && res.ownedTenants.length > 0) {",
+									"  pm.globals.set('tenant_id', res.ownedTenants[0].id);",
+									"  console.warn('needTenantSelection: saved first owned tenant_id. Re-run Owner Login to get tenant-scoped token.');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"tenantId\": \"{{tenant_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/owner/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"owner",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Auth: Check (tenant-scoped)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200 OK', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"pm.test('has valid=true', () => pm.expect(res.valid).to.eql(true));",
+									"pm.test('has user', () => pm.expect(res.user && res.user.id && res.user.email).to.be.ok);",
+									"pm.test('has tenant (tenant-scoped token)', () => pm.expect(res.tenant && res.tenant.id).to.be.ok);",
+									"pm.test('roles/perms arrays', () => {",
+									"  pm.expect(Array.isArray(res.roles)).to.be.true;",
+									"  pm.expect(Array.isArray(res.perms)).to.be.true;",
+									"});",
+									"// Optionally cache fields if you want",
+									"if (res.tenant && res.tenant.id) pm.globals.set('tenant_id', res.tenant.id);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auth/check",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"check"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Auth: Reset Password (complete)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Reset password 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"<paste-token-from-email-link>\",\n  \"newPassword\": \"NewPass123!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/reset-password",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"reset-password"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Auth: Request Password Reset",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Request reset 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{email}}\",\n  \"tenantId\": \"{{tenant_id}}\" // optional hint for frontend redirect\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/request-password-reset",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"request-password-reset"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Users: Update (PATCH)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200 OK', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"pm.test('has userId', () => pm.expect(res.user && res.user.id).to.be.ok);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"fullName\": \"Updated Name\",\n  \"phone\": \"+92-300-1234567\",\n  \"country\": \"PK\",\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/{{member_user_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users",
+								"{{member_user_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Tenant",
+			"item": [
+				{
+					"name": "2) Create Tenant (Authenticated Owner)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Create tenant 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"const tId = res.tenantId || res.data?.tenantId;",
+									"if (tId) pm.globals.set('tenant_id', tId);",
+									"const slug = res.tenantSlug || res.data?.tenantSlug;",
+									"if (slug) pm.globals.set('tenant_slug', slug);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenantName\": \"Test Company\",\n  \"description\": \"Demo tenant\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/tenants",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"tenants"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "12) Delete Tenant (Owner only, HARD DELETE)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/tenants/{{tenant_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"tenants",
+								"{{tenant_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "RBAC",
+			"item": [
+				{
+					"name": "4) Permissions: List All (Owner has access)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/permissions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"permissions"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "5) Roles: Create (with permissionNames)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Role created 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"const roleId = res.id || res.data?.id;",
+									"if (roleId) pm.globals.set('role_id', roleId);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"PurchasingLead\",\n  \"description\": \"Leads purchasing ops\",\n  \"permissionNames\": [\n    \"purchases.create\",\n    \"purchases.read\",\n    \"purchases.update\"\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/roles",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"roles"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "6) Roles: List",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/roles",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"roles"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "7) Roles: Set Permissions (replace set)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"permissionNames\": [\"purchases.create\", \"purchases.read\"]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/roles/{{role_id}}/permissions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"roles",
+								"{{role_id}}",
+								"permissions"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "7b) Roles: Update Name/Description + Permissions (all-in-one)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Update role + perms 200', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json();",
+									"",
+									"// Service returns the final permission names (array).",
+									"pm.test('Response is array of permission names', () => {",
+									"  pm.expect(Array.isArray(res)).to.be.true;",
+									"  if (res.length) pm.expect(res.every(x => typeof x === 'string')).to.be.true;",
+									"});",
+									"",
+									"// Optionally assert it matches what we sent (order-insensitive)",
+									"try {",
+									"  const sent = (pm.request.body && pm.request.body.raw)",
+									"    ? JSON.parse(pm.request.body.raw).permissionNames || []",
+									"    : [];",
+									"  pm.test('Permissions match payload (set semantics)', () => {",
+									"    const a = new Set(res), b = new Set(sent);",
+									"    pm.expect(res.length).to.eql(sent.length);",
+									"    sent.forEach(n => pm.expect(a.has(n)).to.be.true);",
+									"    res.forEach(n => pm.expect(b.has(n)).to.be.true);",
+									"  });",
+									"} catch (e) { /* ignore if body not JSON */ }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"PurchasingManager\",\n  \"description\": \"Owns purchasing workflows\",\n  \"permissionNames\": [\n    \"purchases.create\",\n    \"purchases.read\",\n    \"purchases.update\"\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/roles/{{role_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"roles",
+								"{{role_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "10) Users: Assign Role to Member",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"roleIds\": [\"{{role_id}}\"]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/{{member_user_id}}/roles",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users",
+								"{{member_user_id}}",
+								"roles"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Roles: Delete",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200/204 OK', () => pm.expect(pm.response.code).to.be.oneOf([200,204]));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/roles/{{role_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"roles",
+								"{{role_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Members",
+			"item": [
+				{
+					"name": "8) Users: Invite (Owner/Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{member_email}}\",\n  \"fullName\": \"Member User\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/invite",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users",
+								"invite"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "9) Users: List (search to capture member_user_id)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Users list 200', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"const payload = res.data || res;",
+									"const rows = payload?.data || payload || [];",
+									"if (Array.isArray(rows) && rows.length > 0) {",
+									"  const m = rows.find(r => r.email === pm.variables.get('member_email')) || rows[0];",
+									"  if (m && m.id) pm.globals.set('member_user_id', m.id);",
+									"} else {",
+									"  console.warn('No users found for member_email search');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users?q={{member_email}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "{{member_email}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "11) Member Login (Tenant-scoped)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Member login 200', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"// Save member token separately if you like",
+									"// if (res.access_token) pm.globals.set('member_access_token', res.access_token);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{member_email}}\",\n  \"password\": \"{{member_password}}\",\n  \"tenantId\": \"{{tenant_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/member/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"member",
+								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Warehouses",
+			"item": [
+				{
+					"name": "Warehouses: Create",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Create warehouse 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"const id = res.id || res.data?.id;",
+									"if (id) pm.globals.set('warehouse_id', id);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"KHI-1\",\n  \"name\": \"Karachi Main Warehouse\",\n  \"country\": \"PK\",\n  \"address1\": \"Site Area\",\n  \"city\": \"Karachi\",\n  \"state\": \"Sindh\",\n  \"zipCode\": \"75180\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/warehouses",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"warehouses"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Warehouses: List (active)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/warehouses",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"warehouses"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Warehouses: Get by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/warehouses/{{warehouse_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"warehouses",
+								"{{warehouse_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Warehouses: Update (PATCH)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Karachi Central Warehouse\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/warehouses/{{warehouse_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"warehouses",
+								"{{warehouse_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Warehouses: Archive",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/warehouses/{{warehouse_id}}/archive",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"warehouses",
+								"{{warehouse_id}}",
+								"archive"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Suppliers",
+			"item": [
+				{
+					"name": "Suppliers: Create",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Create supplier 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+									"const res = pm.response.json() || {};",
+									"const id = res.id || res.data?.id;",
+									"if (id) pm.globals.set('supplier_id', id);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"companyName\": \"Acme Supplies\",\n  \"currency\": \"PKR\",\n  \"email\": \"purchasing@acme.com\",\n  \"phone\": \"+92-300-0000000\",\n  \"country\": \"PK\",\n  \"address1\": \"Plot 12, Industrial Area\",\n  \"city\": \"Karachi\",\n  \"state\": \"Sindh\",\n  \"zipCode\": \"75230\",\n  \"notes\": \"Preferred vendor\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/suppliers",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"suppliers"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Suppliers: List (active)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/suppliers",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"suppliers"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Suppliers: Get by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/suppliers/{{supplier_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"suppliers",
+								"{{supplier_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Suppliers: Update (PATCH)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+92-311-1111111\",\n  \"notes\": \"Updated contact\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/suppliers/{{supplier_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"suppliers",
+								"{{supplier_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Suppliers: Archive",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "X-Tenant-ID",
+								"value": "{{tenant_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/suppliers/{{supplier_id}}/archive",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"suppliers",
+								"{{supplier_id}}",
+								"archive"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000"
+		},
+		{
+			"key": "email",
+			"value": "abialigadi@gmail.com"
+		},
+		{
+			"key": "password",
+			"value": "supersecret"
+		},
+		{
+			"key": "tenant_id",
+			"value": ""
+		},
+		{
+			"key": "tenant_slug",
+			"value": ""
+		},
+		{
+			"key": "access_token",
+			"value": ""
+		},
+		{
+			"key": "member_email",
+			"value": "member@example.com"
+		},
+		{
+			"key": "member_password",
+			"value": "TempPass123!"
+		},
+		{
+			"key": "member_user_id",
+			"value": ""
+		},
+		{
+			"key": "role_id",
+			"value": ""
+		},
+		{
+			"key": "supplier_id",
+			"value": ""
+		},
+		{
+			"key": "warehouse_id",
+			"value": ""
+		}
+	]
+}

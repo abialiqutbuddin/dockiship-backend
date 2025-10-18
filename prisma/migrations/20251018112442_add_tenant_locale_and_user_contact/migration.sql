@@ -1,0 +1,10 @@
+-- AlterTable
+ALTER TABLE `Role` ALTER COLUMN `updatedAt` DROP DEFAULT;
+
+-- AlterTable
+ALTER TABLE `Tenant` ADD COLUMN `currency` VARCHAR(3) NOT NULL DEFAULT 'USD',
+    ADD COLUMN `timezone` VARCHAR(100) NOT NULL DEFAULT 'UTC';
+
+-- AlterTable
+ALTER TABLE `UserTenant` ADD COLUMN `country` VARCHAR(2) NULL,
+    ADD COLUMN `phone` VARCHAR(30) NULL;

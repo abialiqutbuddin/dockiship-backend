@@ -8,7 +8,7 @@ function randomSuffix(n = 6) { return Math.random().toString(36).slice(-n); }
 
 @Injectable()
 export class TenantService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private defaultRoleNames(): Array<{ name: string; allPerms: boolean }> {
     return [
@@ -32,14 +32,14 @@ export class TenantService {
       const safeName = dto.tenantName?.trim() || `${(user.fullName || 'Tenant').split(' ')[0]}'s Workspace`;
       let base = slugifyBase(safeName) || 'workspace';
       let slug = base;
-      for (;;) {
+      for (; ;) {
         const clash = await tx.tenant.findFirst({ where: { slug } });
         if (!clash) break;
         slug = `${base}-${randomSuffix(4)}`;
       }
 
       const tenant = await tx.tenant.create({
-        data: { name: safeName, slug, description: dto.description?.trim() || null },
+        data: { name: safeName, slug, description: dto.description?.trim() || null, currency: 'USD', timezone: 'UTC' },
       });
 
       // Load ALL permissions (must be seeded)
@@ -130,5 +130,48 @@ export class TenantService {
     });
 
     return { message: 'Tenant and related data deleted permanently' };
+  }
+
+  async updateTenant(tenantId: string, requesterUserId: string, dto: {
+    name?: string;
+    description?: string;
+    currency?: string;
+    timezone?: string;
+  }) {
+    // Ensure tenant exists
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    // Ensure requester is an owner of this tenant
+    const membership = await this.prisma.userTenant.findUnique({
+      where: { userId_tenantId_unique: { userId: requesterUserId, tenantId } },
+      select: { isOwner: true },
+    });
+    if (!membership?.isOwner) {
+      throw new ForbiddenException('Only tenant owners can update tenant settings');
+    }
+
+    // Normalize currency to UPPER if provided
+    const data: any = {
+      ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+      ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
+      ...(dto.currency !== undefined ? { currency: dto.currency.toUpperCase() } : {}),
+      ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
+    };
+
+    const updated = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data,
+      select: { id: true, 
+        name: true, 
+        slug: true, 
+        description: true, 
+        currency: true, 
+        timezone: true, 
+        //updatedAt: true 
+      },
+    });
+
+    return { message: 'Tenant updated', tenant: updated };
   }
 }
