@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: pull, build, restart via PM2
+      - name: Deploy on VM via SSH (git pull + build + pm2)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -28,19 +28,46 @@ jobs:
           script: |
             set -euo pipefail
 
-            cd /home/developer/dockiship-backend
+            APP_DIR="$HOME/dockiship-backend"
+            BRANCH="main"
+            NODE_VERSION="20"
 
-            mkdir test
+            cd "$APP_DIR"
 
-            # Pull latest
-            git pull --ff-only
+            echo "==> Git pull"
+            git fetch origin "$BRANCH" --prune
+            git checkout "$BRANCH"
+            git pull --ff-only origin "$BRANCH"
 
-            # Install deps cleanly
-            npx ci --no-audit --no-fund
+            echo "==> Load NVM & use Node ${NODE_VERSION}"
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            nvm install "$NODE_VERSION"
+            nvm use "$NODE_VERSION"
+            node -v
+            npm -v
 
-            # Build (uses local devDependency)
-            npx nest build
+            echo "==> Install deps (clean, reproducible)"
+            npm ci --no-audit --no-fund
 
-            # Restart with PM2 (start if missing)
-            pm2 restart dockiship-backend
+            echo "==> Build (Nest via npx so we don't need global CLI)"
+            npx nest build || npx tsc -p tsconfig.build.json
+
+            echo "==> Ensure pm2 on PATH"
+            if ! command -v pm2 >/dev/null 2>&1; then
+              npm i -g pm2
+            fi
+            echo "PM2 path: $(command -v pm2)"
+
+            echo "==> Restart app"
+            if [ -f ecosystem.config.js ]; then
+              pm2 startOrReload ecosystem.config.js --update-env
+            else
+              # first start if not running, otherwise restart
+              pm2 describe dockiship-backend >/dev/null 2>&1 \
+                && pm2 restart dockiship-backend \
+                || pm2 start dist/main.js --name dockiship-backend
+            fi
+
             pm2 save
+            pm2 status
