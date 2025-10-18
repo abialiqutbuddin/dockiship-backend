@@ -1,6 +1,6 @@
 // src/users/user.controller.ts
 import {
-  Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards,
+  Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../common/guards/rbac.guard';

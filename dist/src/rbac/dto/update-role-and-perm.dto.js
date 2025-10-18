@@ -28,8 +28,9 @@ __decorate([
     __metadata("design:type", String)
 ], UpdateRoleAndPermissionsDto.prototype, "description", void 0);
 __decorate([
-    (0, class_validator_1.IsArray)(),
-    (0, class_validator_1.ArrayNotEmpty)(),
+    (0, class_validator_1.IsArray)()
+    //@ArrayNotEmpty()
+    ,
     (0, class_validator_1.ArrayUnique)(),
     (0, class_validator_1.IsString)({ each: true }),
     __metadata("design:type", Array)

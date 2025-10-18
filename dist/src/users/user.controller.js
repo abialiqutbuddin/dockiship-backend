@@ -44,6 +44,9 @@ let UserController = class UserController {
             roleIds: dto.roleIds,
         });
     }
+    async removeFromTenant(tenantId, userId) {
+        return this.users.removeUserFromTenant(userId, tenantId);
+    }
     async createMember(tenantId, dto) {
         return this.users.createMemberWithPassword({
             tenantId,
@@ -92,6 +95,16 @@ __decorate([
     __metadata("design:paramtypes", [String, invite_user_dto_1.InviteUserDto]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "invite", null);
+__decorate([
+    (0, common_1.Delete)(':userId'),
+    (0, roles_decorator_1.Roles)('Admin', 'Owner'),
+    (0, permissions_decorator_1.Permissions)('user.manage'),
+    __param(0, (0, tenant_decorator_1.TenantId)()),
+    __param(1, (0, common_1.Param)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], UserController.prototype, "removeFromTenant", null);
 __decorate([
     (0, common_1.Post)(),
     (0, roles_decorator_1.Roles)('Admin', 'Owner'),

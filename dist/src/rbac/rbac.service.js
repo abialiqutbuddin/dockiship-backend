@@ -147,22 +147,41 @@ let RbacService = class RbacService {
         return this.listPermissionsForRole(roleId, tenantId);
     }
     // update role and permissions
-    async updateRoleAndPermissions(tenantId, roleId, dto) {
+    async updateRoleAndPermissions(tenantId, roleId, dto // <- make optional
+    ) {
         await this.assertRoleInTenant(roleId, tenantId);
-        // Validate permissions exist and collect IDs
-        const permissionIds = await this.getPermissionIdsByNames(dto.permissionNames);
+        // If the caller didn't send permissionNames at all -> don't touch permissions.
+        const touchPermissions = Array.isArray(dto.permissionNames);
+        // Prepare the meta update (name/description) first
+        const roleMetaUpdate = this.prisma.role.update({
+            where: { id: roleId },
+            data: {
+                ...(dto.name !== undefined ? { name: dto.name } : {}),
+                ...(dto.description !== undefined ? { description: dto.description } : {}),
+            },
+        });
         try {
-            // One transaction: update role meta, replace links, then return names
+            if (!touchPermissions) {
+                // Only update meta; leave permissions as-is
+                await roleMetaUpdate;
+                return this.listPermissionsForRole(roleId, tenantId);
+            }
+            // permissionNames provided:
+            const names = dto.permissionNames;
+            if (names.length === 0) {
+                // Explicitly clear all permissions
+                await this.prisma.$transaction([
+                    roleMetaUpdate,
+                    this.prisma.rolePermission.deleteMany({ where: { roleId } }),
+                ]);
+                return { 'ok': true }; // now the role has zero permissions
+            }
+            // Non-empty -> validate + replace
+            const permissionIds = await this.getPermissionIdsByNames(names);
             await this.prisma.$transaction([
-                this.prisma.role.update({
-                    where: { id: roleId },
-                    data: {
-                        // only send fields if provided to avoid nulling
-                        ...(dto.name !== undefined ? { name: dto.name } : {}),
-                        ...(dto.description !== undefined ? { description: dto.description } : {}),
-                    },
-                }),
+                roleMetaUpdate,
                 this.prisma.rolePermission.deleteMany({ where: { roleId } }),
+                // Guard: createMany with data: [] is a no-op; we know it's non-empty here
                 this.prisma.rolePermission.createMany({
                     data: permissionIds.map((pid) => ({ roleId, permissionId: pid })),
                     skipDuplicates: true,
@@ -176,7 +195,6 @@ let RbacService = class RbacService {
             }
             throw e;
         }
-        // Return the updated permission names (sorted)
         return this.listPermissionsForRole(roleId, tenantId);
     }
     // REMOVE given permissions

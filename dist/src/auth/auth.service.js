@@ -270,7 +270,7 @@ let AuthService = class AuthService {
         }
         const token = this.jwt.sign({ sub: user.id, email: user.email }, // no tenant needed to reset a global password
         { expiresIn: '15m' });
-        const base = process.env.FRONTEND_URL || 'http://202.163.98.129:3000';
+        const base = 'http://203.215.170.100';
         const resetLink = tenantHint
             ? `${base}/reset-password?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(tenantHint)}`
             : `${base}/reset-password?token=${encodeURIComponent(token)}`;

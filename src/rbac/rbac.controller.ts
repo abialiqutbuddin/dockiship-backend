@@ -116,7 +116,7 @@ export class RbacController {
     return this.rbac.setPermissionsForRole(roleId, tenantId, dto.permissionNames);
   }
 
-  @Patch(':roleId')
+  @Put(':roleId')
   updateRoleAndPermissions(
     @Param('roleId') roleId: string,
     @Body() dto: UpdateRoleAndPermissionsDto,

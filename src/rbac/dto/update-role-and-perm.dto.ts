@@ -14,8 +14,8 @@ export class UpdateRoleAndPermissionsDto {
   description?: string;
 
   @IsArray()
-  @ArrayNotEmpty()
+  //@ArrayNotEmpty()
   @ArrayUnique()
   @IsString({ each: true })
-  permissionNames!: string[]; // e.g., ["inventory.read", "purchases.update"]
+  permissionNames!: string[];
 }

@@ -157,7 +157,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], RbacController.prototype, "setRolePermissions", null);
 __decorate([
-    (0, common_1.Patch)(':roleId'),
+    (0, common_1.Put)(':roleId'),
     __param(0, (0, common_1.Param)('roleId')),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, tenant_decorator_1.TenantId)()),

@@ -115,8 +115,8 @@ let UserService = class UserService {
                 skipDuplicates: true,
             });
         }
-        const appName = process.env.APP_NAME || 'our app';
-        const base = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const appName = process.env.APP_NAME || 'DockiShip';
+        const base = 'http://203.215.170.100';
         if (isNewUser) {
             // NEW user -> send reset link to set their first password
             const token = this.jwt.sign({ sub: user.id, email: user.email }, // global password reset
@@ -205,6 +205,33 @@ let UserService = class UserService {
                 data: roleIds.map((roleId) => ({ userTenantId: membership.id, roleId })),
             }),
         ]);
+        return { ok: true };
+    }
+    /**
+ * Delete the user's membership in a tenant (and its role links).
+ * Does NOT delete the global user account.
+ * Guards you from removing an owner membership (optional safety).
+ */
+    async removeUserFromTenant(userId, tenantId) {
+        // Ensure membership exists
+        const m = await this.prisma.userTenant.findUnique({
+            where: { userId_tenantId_unique: { userId, tenantId } },
+            include: { tenant: true },
+        });
+        if (!m) {
+            throw new common_1.NotFoundException('Membership not found for this tenant');
+        }
+        // Optional: prevent deleting an owner’s own last owner membership, etc.
+        // If you track ownership on membership, check it here (pseudo):
+        // if (m.isOwner) throw new BadRequestException('Cannot remove owner membership');
+        await this.prisma.$transaction(async (tx) => {
+            // remove role links for this membership
+            await tx.userTenantRole.deleteMany({ where: { userTenantId: m.id } });
+            // delete membership row
+            await tx.userTenant.delete({
+                where: { userId_tenantId_unique: { userId, tenantId } },
+            });
+        });
         return { ok: true };
     }
     async addRolesForUserInTenant(userId, tenantId, roleIds) {
