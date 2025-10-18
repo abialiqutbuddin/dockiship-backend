@@ -120,7 +120,6 @@ export class RbacController {
   updateRoleAndPermissions(
     @Param('roleId') roleId: string,
     @Body() dto: UpdateRoleAndPermissionsDto,
-    // e.g. custom decorator pulling from request context
     @TenantId() tenantId: string,
   ) {
     return this.rbac.updateRoleAndPermissions(tenantId, roleId, dto);
