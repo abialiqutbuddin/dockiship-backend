@@ -51,7 +51,7 @@ jobs:
             npm ci --no-audit --no-fund
 
             echo "==> Build (Nest via npx so we don't need global CLI)"
-            npx nest build || npx tsc -p tsconfig.build.json
+            npx nest build
 
             echo "==> Ensure pm2 on PATH"
             if ! command -v pm2 >/dev/null 2>&1; then
