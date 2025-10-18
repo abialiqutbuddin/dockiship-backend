@@ -60,14 +60,8 @@ jobs:
             echo "PM2 path: $(command -v pm2)"
 
             echo "==> Restart app"
-            if [ -f ecosystem.config.js ]; then
-              pm2 startOrReload ecosystem.config.js --update-env
-            else
-              # first start if not running, otherwise restart
-              pm2 describe dockiship-backend >/dev/null 2>&1 \
-                && pm2 restart dockiship-backend \
-                || pm2 start dist/main.js --name dockiship-backend
-            fi
+            # restart pm2
+            pm2 restart dockiship-backend
 
             pm2 save
             pm2 status
