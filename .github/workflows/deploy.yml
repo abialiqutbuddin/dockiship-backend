@@ -28,7 +28,7 @@ jobs:
           script: |
             set -euo pipefail
 
-            cd "$HOME/dockiship-backend"
+            cd dockiship-backend
 
             # Pull latest
             git pull --ff-only
