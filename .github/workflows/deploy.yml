@@ -34,11 +34,11 @@ jobs:
             git pull --ff-only
 
             # Install deps cleanly
-            npm ci --no-audit --no-fund
+            npx ci --no-audit --no-fund
 
             # Build (uses local devDependency)
-            npx nest build || npx tsc -p tsconfig.build.json
+            npx nest build
 
             # Restart with PM2 (start if missing)
-            pm2 restart dockiship-backend || pm2 start dist/main.js --name dockiship-backend
+            pm2 restart dockiship-backend
             pm2 save
