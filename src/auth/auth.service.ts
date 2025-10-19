@@ -30,8 +30,8 @@ export class AuthService {
         return rolePerms.map((rp) => rp.permission.name);
     }
 
-    private toSafeUser(u: { id: string; email: string; fullName: string }) {
-        return { id: u.id, email: u.email, fullName: u.fullName };
+    private toSafeUser(u: { id: string; email: string; fullName: string,country?:string,phone?:string,createdAt?:Date }) {
+        return { id: u.id, email: u.email, fullName: u.fullName,country: u.country,phone: u.phone,createdAt: u.createdAt };
     }
 
     async check(payload: JwtPayload) {
@@ -49,7 +49,13 @@ export class AuthService {
         // Get user basic info
         const user = await this.prisma.user.findUnique({
             where: { id: payload.sub },
-            select: { id: true, email: true, fullName: true, isActive: true },
+            select: { id: true, 
+                email: true, 
+                fullName: true, 
+                isActive: true, 
+                phone: true,
+                country: true,
+                createdAt: true },
         });
         if (!user || !user.isActive) {
             throw new UnauthorizedException('User not active');
@@ -91,9 +97,9 @@ export class AuthService {
         // Build a consistent response
         return {
             valid: true,
-            typ: payload.typ,                // 'owner' | 'member'
-            user: this.toSafeUser(user),     // { id, email, fullName }
-            tenant: membership.tenant,       // { id, name, slug }
+            typ: payload.typ,              
+            user: user,    
+            tenant: membership.tenant,      
             roles,
             perms,
         };
