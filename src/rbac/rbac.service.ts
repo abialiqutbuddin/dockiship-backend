@@ -149,6 +149,12 @@ export class RbacService {
     return this.listPermissionsForRole(roleId, tenantId);
   }
 
+  async findRoleById(tenantId: string, roleId: string) {
+  return this.prisma.role.findFirst({
+    where: { id: roleId, tenantId },
+  });
+}
+
   // update role and permissions
 async updateRoleAndPermissions(
   tenantId: string,
