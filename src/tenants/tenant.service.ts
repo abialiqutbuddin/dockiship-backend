@@ -87,7 +87,7 @@ export class TenantService {
   }
 
   // (keep your existing hardDeleteTenant exactly as you already posted)
-  async hardDeleteTenant(tenantId: string, requesterUserId: string) {
+    async hardDeleteTenant(tenantId: string, requesterUserId: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Tenant not found');
 
@@ -100,36 +100,40 @@ export class TenantService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      const memberships = await tx.userTenant.findMany({
-        where: { tenantId },
-        select: { id: true, userId: true },
+      // 1) Remove role assignments for memberships of this tenant
+      await tx.userTenantRole.deleteMany({
+        where: { membership: { tenantId } },
       });
-      const userIds = [...new Set(memberships.map((m) => m.userId))];
 
-      let usersToDelete: string[] = [];
-      if (userIds.length) {
-        const grouped = await tx.userTenant.groupBy({
-          by: ['userId'],
-          where: { userId: { in: userIds } },
-          _count: { _all: true },
-        });
-        usersToDelete = grouped.filter((g) => g._count._all === 1).map((g) => g.userId);
-      }
+      // 2) Remove memberships (detach ALL users from this tenant)
+      await tx.userTenant.deleteMany({
+        where: { tenantId },
+      });
 
-      await tx.userTenantRole.deleteMany({ where: { membership: { tenantId } } });
-      await tx.userTenant.deleteMany({ where: { tenantId } });
-      await tx.rolePermission.deleteMany({ where: { role: { tenantId } } });
-      await tx.role.deleteMany({ where: { tenantId } });
+      // 3) Remove tenant-scoped RBAC
+      await tx.rolePermission.deleteMany({
+        where: { role: { tenantId } },
+      });
+      await tx.role.deleteMany({
+        where: { tenantId },
+      });
+
+      // 4) Remove other tenant-scoped data
       await tx.tenantEntitlement.deleteMany({ where: { tenantId } });
       await tx.subscription.deleteMany({ where: { tenantId } });
+
+      // (Add any of your other tenant-scoped tables here, e.g. warehouses, suppliers, etc.)
+      // await tx.warehouse.deleteMany({ where: { tenantId } });
+      // await tx.supplier.deleteMany({ where: { tenantId } });
+      // ...
+
+      // 5) Finally, delete the tenant record
       await tx.tenant.delete({ where: { id: tenantId } });
 
-      if (usersToDelete.length) {
-        await tx.user.deleteMany({ where: { id: { in: usersToDelete } } });
-      }
+      // IMPORTANT: Do NOT delete users, regardless of whether they had only this tenant.
     });
 
-    return { message: 'Tenant and related data deleted permanently' };
+    return { message: 'Tenant deleted. All tenant-scoped data removed. Users retained.' };
   }
 
   async updateTenant(tenantId: string, requesterUserId: string, dto: {
