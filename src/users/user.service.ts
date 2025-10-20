@@ -45,7 +45,7 @@ export class UserService {
         const m = await this.prisma.userTenant.findUnique({
             where: { userId_tenantId_unique: { userId, tenantId } },
         });
-        if (!m) throw new NotFoundException('Membership not found for this tenant');
+        if (!m) throw new NotFoundException('Membership not found for this company');
         return m;
     }
 
@@ -94,7 +94,7 @@ export class UserService {
         if (existingMembership) {
             // You can customize the message by status if you like:
             // e.g. if (existingMembership.status !== 'active') { ... }
-            throw new BadRequestException('User is already a member of this tenant');
+            throw new BadRequestException('User is already a member of this company');
         }
 
         // 3) Create membership (active) + roles (validated to the same tenant)
@@ -116,7 +116,7 @@ export class UserService {
                 });
                 if (roles.length !== data.roleIds.length) {
                     throw new BadRequestException(
-                        'One or more roles do not belong to this tenant',
+                        'One or more roles do not belong to this company',
                     );
                 }
                 await this.prisma.userTenantRole.createMany({
@@ -134,7 +134,7 @@ export class UserService {
                 e.code === 'P2002'
             ) {
                 // unique constraint on (userId, tenantId)
-                throw new BadRequestException('User is already a member of this tenant');
+                throw new BadRequestException('User is already a member of this company');
             }
             throw e;
         }
@@ -186,7 +186,7 @@ export class UserService {
         `,
             );
 
-            return { message: 'User added to tenant and notified.' };
+            return { message: 'User added to company and notified.' };
         }
     }
 
@@ -228,7 +228,7 @@ export class UserService {
                 select: { id: true },
             });
             if (roles.length !== data.roleIds.length) {
-                throw new BadRequestException('One or more roles do not belong to this tenant');
+                throw new BadRequestException('One or more roles do not belong to this company');
             }
             await this.prisma.userTenantRole.createMany({
                 data: data.roleIds.map((roleId) => ({ userTenantId: membership.id, roleId })),
@@ -252,7 +252,7 @@ export class UserService {
 
         const roles = await this.prisma.role.findMany({ where: { id: { in: roleIds }, tenantId } });
         if (roles.length !== roleIds.length) {
-            throw new BadRequestException('One or more roles do not belong to this tenant');
+            throw new BadRequestException('One or more roles do not belong to this company');
         }
 
         await this.prisma.$transaction([
@@ -277,7 +277,7 @@ export class UserService {
             include: { tenant: true },
         });
         if (!m) {
-            throw new NotFoundException('Membership not found for this tenant');
+            throw new NotFoundException('Membership not found for this company');
         }
 
         // Optional: prevent deleting an owner’s own last owner membership, etc.
@@ -301,7 +301,7 @@ export class UserService {
 
         const roles = await this.prisma.role.findMany({ where: { id: { in: roleIds }, tenantId } });
         if (roles.length !== roleIds.length) {
-            throw new BadRequestException('One or more roles do not belong to this tenant');
+            throw new BadRequestException('One or more roles do not belong to this company');
         }
 
         await this.prisma.userTenantRole.createMany({
