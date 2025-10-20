@@ -75,7 +75,7 @@ export class AuthService {
                         },
                     },
                 },
-                tenant: { select: { id: true, name: true, slug: true } },
+                tenant: { select: { id: true, name: true, slug: true, description: true, createdAt: true, currency: true, timezone: true } },
             },
         });
 
