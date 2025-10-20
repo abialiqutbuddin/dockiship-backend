@@ -3,7 +3,9 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -65,6 +67,18 @@ export class RbacController {
     @TenantId() tenantId: string,
     @Param('roleId') roleId: string,
   ) {
+    // Fetch role to verify
+    const role = await this.rbac.findRoleById(tenantId, roleId);
+
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+
+    // Prevent deletion if it's the Owner role
+    if (role.name.toLowerCase() === 'owner') {
+      throw new ForbiddenException('The Owner role cannot be deleted');
+    }
+
     return this.rbac.deleteRole(tenantId, roleId);
   }
 
