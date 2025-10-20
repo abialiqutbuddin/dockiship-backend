@@ -49,9 +49,9 @@ export class UserService {
         return m;
     }
 
-    // --------- Invite flow (email reset) ---------
-
     // --------- Invite flow (email vs reset) ---------
+
+
     async inviteUser(data: {
         email: string;
         fullName?: string;
@@ -61,15 +61,15 @@ export class UserService {
         const email = this.normalizeEmail(data.email);
         if (!email) throw new BadRequestException('Email is required');
 
+        // 1) Ensure user exists (create global account if needed)
         let user = await this.findUserByEmail(email);
         const fullName = this.safeName(data.fullName, email);
-
         const isNewUser = !user;
 
-        // Create global user if missing (temp password)
         if (!user) {
             const tempPassword =
-                Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4);
+                Math.random().toString(36).slice(-8) +
+                Math.random().toString(36).slice(-4);
             user = await this.prisma.user.create({
                 data: {
                     email,
@@ -80,73 +80,113 @@ export class UserService {
             });
         }
 
-        // Upsert membership (active)
-        const membership = await this.prisma.userTenant.upsert({
-            where: { userId_tenantId_unique: { userId: user.id, tenantId: data.tenantId } },
-            create: { userId: user.id, tenantId: data.tenantId, status: 'active' },
-            update: { status: 'active' },
+        // 2) Check membership — if already present, return an error
+        const existingMembership = await this.prisma.userTenant.findUnique({
+            where: {
+                userId_tenantId_unique: {
+                    userId: user.id,
+                    tenantId: data.tenantId,
+                },
+            },
+            select: { id: true, status: true },
         });
 
-        // Validate role ids belong to this tenant
-        if (data.roleIds?.length) {
-            const roles = await this.prisma.role.findMany({
-                where: { id: { in: data.roleIds }, tenantId: data.tenantId },
-                select: { id: true },
-            });
-            if (roles.length !== data.roleIds.length) {
-                throw new BadRequestException('One or more roles do not belong to this tenant');
-            }
-            await this.prisma.userTenantRole.createMany({
-                data: data.roleIds.map((roleId) => ({ userTenantId: membership.id, roleId })),
-                skipDuplicates: true,
-            });
+        if (existingMembership) {
+            // You can customize the message by status if you like:
+            // e.g. if (existingMembership.status !== 'active') { ... }
+            throw new BadRequestException('User is already a member of this tenant');
         }
 
+        // 3) Create membership (active) + roles (validated to the same tenant)
+        try {
+            const membership = await this.prisma.userTenant.create({
+                data: {
+                    userId: user.id,
+                    tenantId: data.tenantId,
+                    status: 'active',
+                },
+                select: { id: true },
+            });
+
+            if (data.roleIds?.length) {
+                // Ensure all roleIds belong to this tenant
+                const roles = await this.prisma.role.findMany({
+                    where: { id: { in: data.roleIds }, tenantId: data.tenantId },
+                    select: { id: true },
+                });
+                if (roles.length !== data.roleIds.length) {
+                    throw new BadRequestException(
+                        'One or more roles do not belong to this tenant',
+                    );
+                }
+                await this.prisma.userTenantRole.createMany({
+                    data: data.roleIds.map((roleId) => ({
+                        userTenantId: membership.id,
+                        roleId,
+                    })),
+                    skipDuplicates: true,
+                });
+            }
+        } catch (e) {
+            // In case of a race condition: two invites at once
+            if (
+                e instanceof Prisma.PrismaClientKnownRequestError &&
+                e.code === 'P2002'
+            ) {
+                // unique constraint on (userId, tenantId)
+                throw new BadRequestException('User is already a member of this tenant');
+            }
+            throw e;
+        }
+
+        // 4) Email
         const appName = process.env.APP_NAME || 'DockiShip';
         const base = 'http://203.215.170.100';
 
         if (isNewUser) {
-            // NEW user -> send reset link to set their first password
+            // New user → send password setup link
             const token = this.jwt.sign(
-                { sub: user.id, email: user.email }, // global password reset
+                { sub: user.id, email: user.email },
                 { expiresIn: '15m' },
             );
-            const resetLink = `${base}/reset-password?token=${encodeURIComponent(token)}`;
+            const resetLink = `${base}/reset-password?token=${encodeURIComponent(
+                token,
+            )}`;
 
             await this.email.sendMail(
                 user.email,
                 `You're invited to ${appName} – set your password`,
                 `
-        <h2>Welcome</h2>
-        <p>Hi ${fullName},</p>
-        <p>You’ve been invited to <b>${appName}</b>. Please set your password to sign in.</p>
-        <p><a href="${resetLink}" target="_blank"
-          style="background:#4F46E5;color:white;padding:10px 15px;border-radius:6px;text-decoration:none;">
-          Set Your Password
-        </a></p>
-        <p>This link expires in 15 minutes.</p>
-      `,
+          <h2>Welcome</h2>
+          <p>Hi ${fullName},</p>
+          <p>You’ve been invited to <b>${appName}</b>. Please set your password to sign in.</p>
+          <p><a href="${resetLink}" target="_blank"
+            style="background:#4F46E5;color:white;padding:10px 15px;border-radius:6px;text-decoration:none;">
+            Set Your Password
+          </a></p>
+          <p>This link expires in 15 minutes.</p>
+        `,
             );
 
             return { message: 'Invitation sent with password setup link' };
         } else {
-            // EXISTING user -> DO NOT send reset; send a simple invite/added email
+            // Existing user → a simple “added to workspace” mail
             const signinLink = `${base}/login`;
             await this.email.sendMail(
                 user.email,
                 `You’ve been added to a new workspace`,
                 `
-        <h2>You're in!</h2>
-        <p>Hi ${fullName},</p>
-        <p>You’ve been added to a new workspace in <b>${appName}</b>. You can sign in with your existing password.</p>
-        <p><a href="${signinLink}" target="_blank"
-          style="background:#4B5563;color:white;padding:10px 15px;border-radius:6px;text-decoration:none;">
-          Sign In
-        </a></p>
-      `,
+          <h2>You're in!</h2>
+          <p>Hi ${fullName},</p>
+          <p>You’ve been added to a new workspace in <b>${appName}</b>. Sign in with your existing password.</p>
+          <p><a href="${signinLink}" target="_blank"
+            style="background:#4B5563;color:white;padding:10px 15px;border-radius:6px;text-decoration:none;">
+            Sign In
+          </a></p>
+        `,
             );
 
-            return { message: 'User added to tenant. Sign-in email sent (no password reset).' };
+            return { message: 'User added to tenant and notified.' };
         }
     }
 
@@ -355,9 +395,9 @@ export class UserService {
     async updateUserInTenant(userId: string, dto: UpdateUserDto) {
         // Ensure the user actually belongs to this tenant
         const user = await this.prisma.user.findUnique({
-             where: { id: userId },
-             //include: { user: true },
-         });
+            where: { id: userId },
+            //include: { user: true },
+        });
 
         // Build partial update; avoid sending undefined fields
         const data: any = {};
