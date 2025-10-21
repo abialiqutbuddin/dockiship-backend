@@ -148,7 +148,7 @@ export class UserService {
             `
       <h2>Invitation</h2>
       <p>Hi ${fullName},</p>
-      <p>You’ve been invited to <b>${appName}</b>.</p>
+      <p>You’ve been invited to <b>${appName}</b>. To accept the invitation, please click the link below. If you think this was a mistake, please ignore this email.</p>
       <p><a href="${acceptLink}" target="_blank"
         style="background:#4F46E5;color:white;padding:10px 15px;border-radius:6px;text-decoration:none;">
         Accept Invitation
