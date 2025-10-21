@@ -4,6 +4,7 @@ import { UserService } from './user.service';
 import { UserController } from './user.controller';
 import { EmailModule } from '../email/email.module';
 import { JwtModule } from '@nestjs/jwt';
+import { InvitationsController } from './invitations.controller';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { JwtModule } from '@nestjs/jwt';
     }),
   ],
   providers: [UserService],
-  controllers: [UserController],
+  controllers: [UserController,InvitationsController],
   exports: [UserService],
 })
 export class UsersModule {}
