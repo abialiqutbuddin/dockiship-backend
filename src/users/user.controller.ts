@@ -1,5 +1,6 @@
 // src/users/user.controller.ts
 import {
+  BadRequestException,
   Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -45,6 +46,12 @@ export class UserController {
       tenantId,
       roleIds: dto.roleIds,
     });
+  }
+
+  @Post('accept')
+  accept(@Body() body: { token: string }) {
+    if (!body?.token) throw new BadRequestException('token is required');
+    return this.users.acceptInvitation(body.token);
   }
 
   @Patch(':userId')

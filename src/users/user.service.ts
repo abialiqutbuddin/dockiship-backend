@@ -51,8 +51,171 @@ export class UserService {
 
     // --------- Invite flow (email vs reset) ---------
 
+    // user.service.ts
 
     async inviteUser(data: {
+        email: string;
+        fullName?: string;
+        tenantId: string;
+        roleIds?: string[];
+    }): Promise<{ message: string }> {
+        const email = this.normalizeEmail(data.email);
+        if (!email) throw new BadRequestException('Email is required');
+
+        let user = await this.findUserByEmail(email);
+        const fullName = this.safeName(data.fullName, email);
+        const isNewUser = !user;
+
+        if (!user) {
+            const tempPassword =
+                Math.random().toString(36).slice(-8) +
+                Math.random().toString(36).slice(-4);
+            user = await this.prisma.user.create({
+                data: {
+                    email,
+                    fullName,
+                    passwordHash: await bcrypt.hash(tempPassword, 10),
+                    isActive: true,
+                },
+            });
+        }
+
+        // Ensure no duplicate membership
+        const existingMembership = await this.prisma.userTenant.findUnique({
+            where: { userId_tenantId_unique: { userId: user.id, tenantId: data.tenantId } },
+            select: { id: true, status: true },
+        });
+        if (existingMembership) {
+            throw new BadRequestException('User is already a member of this company');
+        }
+
+        // Create membership in INVITED state (with invitedAt)
+        let membershipId: string;
+        try {
+            const m = await this.prisma.userTenant.create({
+                data: {
+                    userId: user.id,
+                    tenantId: data.tenantId,
+                    status: 'invited',
+                    invitedAt: new Date(),
+                },
+                select: { id: true },
+            });
+            membershipId = m.id;
+
+            // Attach roles (validate tenant)
+            if (data.roleIds?.length) {
+                const roles = await this.prisma.role.findMany({
+                    where: { id: { in: data.roleIds }, tenantId: data.tenantId },
+                    select: { id: true },
+                });
+                if (roles.length !== data.roleIds.length) {
+                    throw new BadRequestException('One or more roles do not belong to this company');
+                }
+                await this.prisma.userTenantRole.createMany({
+                    data: data.roleIds.map((roleId) => ({ userTenantId: membershipId!, roleId })),
+                    skipDuplicates: true,
+                });
+            }
+        } catch (e) {
+            if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+                throw new BadRequestException('User is already a member of this company');
+            }
+            throw e;
+        }
+
+        // === 7-day invite token ===
+        const inviteToken = this.jwt.sign(
+            {
+                kind: 'invite',
+                userId: user.id,
+                tenantId: data.tenantId,
+                membershipId,
+                isNewUser, // let frontend/backend know what to do after accept
+            },
+            { expiresIn: '7d' } // <-- 7 days
+        );
+
+        // Email: everyone gets the same "Accept invitation" link
+        const appName = process.env.APP_NAME || 'DockiShip';
+        const base = 'http://203.215.170.100'; // keep your base
+
+        const acceptLink = `${base}/invite/accept?token=${encodeURIComponent(inviteToken)}`;
+
+        await this.email.sendMail(
+            user.email,
+            `You're invited to ${appName}`,
+            `
+      <h2>Invitation</h2>
+      <p>Hi ${fullName},</p>
+      <p>You’ve been invited to <b>${appName}</b>.</p>
+      <p><a href="${acceptLink}" target="_blank"
+        style="background:#4F46E5;color:white;padding:10px 15px;border-radius:6px;text-decoration:none;">
+        Accept Invitation
+      </a></p>
+      <p>This invite link expires in 7 days.</p>
+    `
+        );
+
+        return { message: 'Invitation sent (expires in 7 days).' };
+    }
+
+    // user.service.ts
+
+    async acceptInvitation(inviteToken: string) {
+        let payload: any;
+        try {
+            payload = this.jwt.verify(inviteToken);
+        } catch {
+            throw new BadRequestException('Invalid or expired invitation token');
+        }
+
+        if (payload?.kind !== 'invite') {
+            throw new BadRequestException('Invalid invitation token');
+        }
+
+        const { userId, tenantId, membershipId, isNewUser } = payload as {
+            userId: string; tenantId: string; membershipId: string; isNewUser: boolean;
+        };
+
+        // Membership must exist and still be INVITED
+        const m = await this.prisma.userTenant.findUnique({
+            where: { userId_tenantId_unique: { userId, tenantId } },
+            select: { id: true, status: true },
+        });
+        if (!m || m.id !== membershipId) {
+            throw new NotFoundException('Invitation no longer valid for this membership');
+        }
+        if (m.status !== 'invited') {
+            // Already accepted, suspended, etc.
+            if (m.status === 'active') return { ok: true, alreadyActive: true, needsPasswordReset: false };
+            throw new BadRequestException(`Cannot accept an invitation in status "${m.status}"`);
+        }
+
+        await this.prisma.userTenant.update({
+            where: { userId_tenantId_unique: { userId, tenantId } },
+            data: { status: 'active', acceptedAt: new Date() },
+        });
+
+        // If the user was created by the invite flow, ask frontend to show reset-password
+        if (isNewUser) {
+            const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+            const resetToken = this.jwt.sign(
+                { sub: userId, email: user?.email, reason: 'initial_reset' },
+                { expiresIn: '15m' }
+            );
+            return {
+                ok: true,
+                needsPasswordReset: true,
+                resetToken, // frontend can route to /reset-password?token=...
+            };
+        }
+
+        return { ok: true, needsPasswordReset: false };
+    }
+
+
+    async inviteUserOld(data: {
         email: string;
         fullName?: string;
         tenantId: string;

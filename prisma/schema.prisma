@@ -140,8 +140,9 @@ model UserTenant {
   userId   String
   tenantId String
   isOwner  Boolean          @default(false)
-  status   MembershipStatus @default(active)
-
+  status   MembershipStatus @default(invited)
+  invitedAt DateTime?
+  acceptedAt DateTime?
   user   User             @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   roles  UserTenantRole[]
