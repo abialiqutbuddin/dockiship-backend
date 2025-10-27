@@ -14,6 +14,11 @@ export class CreateVariantDto {
   @IsOptional() @IsBoolean() isDraft?: boolean;
   @IsOptional() publishedAt?: Date | null;
 
+  @IsOptional() @IsNumber() retailPrice?: number;
+  @IsOptional() retailCurrency?: string | null;
+  @IsOptional() @IsNumber() originalPrice?: number;
+  @IsOptional() originalCurrency?: string | null;
+
   @IsOptional() @IsNumber() weight?: number;
   @IsOptional() @IsEnum(WeightUnit) weightUnit?: WeightUnit;
   @IsOptional() @IsNumber() length?: number;

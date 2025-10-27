@@ -48,7 +48,7 @@ jobs:
             npm -v
 
             echo "==> Install deps (clean, reproducible)"
-            npm ci --no-audit --no-fund
+            npm i --no-audit --no-fund
 
             echo "==> Build (Nest via npx so we don't need global CLI)"
             npx nest build
