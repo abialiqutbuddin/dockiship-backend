@@ -244,6 +244,57 @@ export class ProductsService {
             items, // Send the new transformed items
         };
     }
+
+    // GET ONE PRODUCT (with relations + kind/type)
+async getProduct(tenantId: string, productId: string) {
+  const product = await this.prisma.product.findFirst({
+    where: { id: productId, tenantId },
+    include: {
+      // needed for kind/type computation
+      _count: { select: { ProductVariant: true } },
+      ProductVariant: {
+        include: { size: true }, // keep if you need size info; otherwise select minimal fields
+      },
+
+      // existing relations you were already returning
+      barcodes: true,
+      images: true,
+      tagLinks: { include: { tag: true } },
+      supplierLinks: { include: { supplier: true } },
+      primarySupplier: true,
+    },
+  });
+
+  if (!product) throw new NotFoundException('Product not found');
+
+  // --- Determine "simple" vs "variant" --------------------------------------
+  const variantCount = product._count?.ProductVariant ?? product.ProductVariant.length;
+
+  let kind: 'simple' | 'variant' = 'simple';
+  if (variantCount === 0) {
+    // legacy edge case: treat as simple
+    kind = 'simple';
+  } else if (variantCount === 1) {
+    const v = product.ProductVariant[0];
+    const hasSizeish =
+      !!v.sizeId || !!v.sizeText || (v.attributes && Object.keys(v.attributes as any).length > 0);
+    const looksSimple = v.sku === product.sku && !hasSizeish;
+    kind = looksSimple ? 'simple' : 'variant';
+  } else {
+    kind = 'variant';
+  }
+
+  // Human-friendly label you already use in lists
+  const type = kind === 'simple' ? 'Simple' : `Variant (${variantCount})`;
+
+  // Return original product shape + kind/type/count for the frontend
+  return {
+    ...product,
+    variantCount,
+    kind, // 'simple' | 'variant'
+    type, // 'Simple' | `Variant (N)`
+  };
+}
     // async listProducts(tenantId: string, q: ListProductsQueryDto) {
     //     const { page = 1, perPage = 20, search, status } = q;
     //     const where: any = { tenantId };
@@ -280,21 +331,21 @@ export class ProductsService {
     // }
 
     // GET ONE PRODUCT (with relations)
-    async getProduct(tenantId: string, productId: string) {
-        const product = await this.prisma.product.findFirst({
-            where: { id: productId, tenantId },
-            include: {
-                ProductVariant: true,
-                barcodes: true,
-                images: true,
-                tagLinks: { include: { tag: true } },
-                supplierLinks: { include: { supplier: true } },
-                primarySupplier: true,
-            },
-        });
-        if (!product) throw new NotFoundException('Product not found');
-        return product;
-    }
+    // async getProduct(tenantId: string, productId: string) {
+    //     const product = await this.prisma.product.findFirst({
+    //         where: { id: productId, tenantId },
+    //         include: {
+    //             ProductVariant: true,
+    //             barcodes: true,
+    //             images: true,
+    //             tagLinks: { include: { tag: true } },
+    //             supplierLinks: { include: { supplier: true } },
+    //             primarySupplier: true,
+    //         },
+    //     });
+    //     if (!product) throw new NotFoundException('Product not found');
+    //     return product;
+    // }
 
     // UPDATE PRODUCT
     // UPDATE PRODUCT (Parent fields only)

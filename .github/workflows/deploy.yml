@@ -1,67 +1,67 @@
-name: Deploy DockiShip Backend (PM2) — simple pull & restart
+# name: Deploy DockiShip Backend (PM2) — simple pull & restart
 
-on:
-  push:
-    branches: ["main"]
-    paths-ignore:
-      - "**/*.md"
-      - ".gitignore"
-  workflow_dispatch:
+# on:
+#   push:
+#     branches: ["main"]
+#     paths-ignore:
+#       - "**/*.md"
+#       - ".gitignore"
+#   workflow_dispatch:
 
-concurrency:
-  group: deploy-dockiship-backend
-  cancel-in-progress: false
+# concurrency:
+#   group: deploy-dockiship-backend
+#   cancel-in-progress: false
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
 
-    steps:
-      - name: Deploy on VM via SSH (git pull + build + pm2)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script_stop: true
-          script: |
-            set -euo pipefail
+#     steps:
+#       - name: Deploy on VM via SSH (git pull + build + pm2)
+#         uses: appleboy/ssh-action@v1.0.3
+#         with:
+#           host: ${{ secrets.SSH_HOST }}
+#           port: ${{ secrets.SSH_PORT }}
+#           username: ${{ secrets.SSH_USER }}
+#           key: ${{ secrets.SSH_KEY }}
+#           script_stop: true
+#           script: |
+#             set -euo pipefail
 
-            APP_DIR="$HOME/dockiship-backend"
-            BRANCH="main"
-            NODE_VERSION="20"
+#             APP_DIR="$HOME/dockiship-backend"
+#             BRANCH="main"
+#             NODE_VERSION="20"
 
-            cd "$APP_DIR"
+#             cd "$APP_DIR"
 
-            echo "==> Git pull"
-            git fetch origin "$BRANCH" --prune
-            git checkout "$BRANCH"
-            git pull --ff-only origin "$BRANCH"
+#             echo "==> Git pull"
+#             git fetch origin "$BRANCH" --prune
+#             git checkout "$BRANCH"
+#             git pull --ff-only origin "$BRANCH"
 
-            echo "==> Load NVM & use Node ${NODE_VERSION}"
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-            nvm install "$NODE_VERSION"
-            nvm use "$NODE_VERSION"
-            node -v
-            npm -v
+#             echo "==> Load NVM & use Node ${NODE_VERSION}"
+#             export NVM_DIR="$HOME/.nvm"
+#             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+#             nvm install "$NODE_VERSION"
+#             nvm use "$NODE_VERSION"
+#             node -v
+#             npm -v
 
-            echo "==> Install deps (clean, reproducible)"
-            npm i --no-audit --no-fund
+#             echo "==> Install deps (clean, reproducible)"
+#             npm i --no-audit --no-fund
 
-            echo "==> Build (Nest via npx so we don't need global CLI)"
-            npx nest build
+#             echo "==> Build (Nest via npx so we don't need global CLI)"
+#             npx nest build
 
-            echo "==> Ensure pm2 on PATH"
-            if ! command -v pm2 >/dev/null 2>&1; then
-              npm i -g pm2
-            fi
-            echo "PM2 path: $(command -v pm2)"
+#             echo "==> Ensure pm2 on PATH"
+#             if ! command -v pm2 >/dev/null 2>&1; then
+#               npm i -g pm2
+#             fi
+#             echo "PM2 path: $(command -v pm2)"
 
-            echo "==> Restart app"
-            # restart pm2
-            pm2 restart dockiship-backend
+#             echo "==> Restart app"
+#             # restart pm2
+#             pm2 restart dockiship-backend
 
-            pm2 save
-            pm2 status
+#             pm2 save
+#             pm2 status
