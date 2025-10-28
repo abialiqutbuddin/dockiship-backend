@@ -245,18 +245,13 @@ export class ProductsService {
         };
     }
 
-    // GET ONE PRODUCT (with relations + kind/type)
+// GET ONE PRODUCT (with simple/variant logic)
 async getProduct(tenantId: string, productId: string) {
   const product = await this.prisma.product.findFirst({
     where: { id: productId, tenantId },
     include: {
-      // needed for kind/type computation
       _count: { select: { ProductVariant: true } },
-      ProductVariant: {
-        include: { size: true }, // keep if you need size info; otherwise select minimal fields
-      },
-
-      // existing relations you were already returning
+      ProductVariant: true,
       barcodes: true,
       images: true,
       tagLinks: { include: { tag: true } },
@@ -267,32 +262,82 @@ async getProduct(tenantId: string, productId: string) {
 
   if (!product) throw new NotFoundException('Product not found');
 
-  // --- Determine "simple" vs "variant" --------------------------------------
   const variantCount = product._count?.ProductVariant ?? product.ProductVariant.length;
-
   let kind: 'simple' | 'variant' = 'simple';
-  if (variantCount === 0) {
-    // legacy edge case: treat as simple
-    kind = 'simple';
+
+  if (variantCount > 1) {
+    kind = 'variant';
   } else if (variantCount === 1) {
     const v = product.ProductVariant[0];
     const hasSizeish =
-      !!v.sizeId || !!v.sizeText || (v.attributes && Object.keys(v.attributes as any).length > 0);
+      !!v.sizeId ||
+      !!v.sizeText ||
+      (v.attributes && Object.keys(v.attributes as any).length > 0);
     const looksSimple = v.sku === product.sku && !hasSizeish;
     kind = looksSimple ? 'simple' : 'variant';
-  } else {
-    kind = 'variant';
   }
 
-  // Human-friendly label you already use in lists
   const type = kind === 'simple' ? 'Simple' : `Variant (${variantCount})`;
 
-  // Return original product shape + kind/type/count for the frontend
+  // If it's a simple product → flatten the variant fields into the parent
+  if (kind === 'simple' && variantCount === 1) {
+    const v = product.ProductVariant[0];
+    const {
+      id: variantId,
+      sku,
+      status,
+      condition,
+      weight,
+      weightUnit,
+      length,
+      width,
+      height,
+      dimensionUnit,
+      retailPrice,
+      retailCurrency,
+      originalPrice,
+      originalCurrency,
+      stockOnHand,
+      stockReserved,
+      stockInTransit,
+      attributes,
+      ...restVariant
+    } = v;
+
+    return {
+      ...product,
+      // overwrite ProductVariant section
+      ProductVariant: undefined,
+      variantId,
+      sku,
+      status,
+      condition,
+      weight,
+      weightUnit,
+      length,
+      width,
+      height,
+      dimensionUnit,
+      retailPrice,
+      retailCurrency,
+      originalPrice,
+      originalCurrency,
+      stockOnHand,
+      stockReserved,
+      stockInTransit,
+      attributes,
+      kind,
+      type,
+      variantCount,
+    };
+  }
+
+  // Otherwise (variant product), return normally
   return {
     ...product,
+    kind,
+    type,
     variantCount,
-    kind, // 'simple' | 'variant'
-    type, // 'Simple' | `Variant (N)`
   };
 }
     // async listProducts(tenantId: string, q: ListProductsQueryDto) {
