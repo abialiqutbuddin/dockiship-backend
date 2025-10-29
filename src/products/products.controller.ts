@@ -11,11 +11,12 @@ import { ListProductsQueryDto } from './dto/list-products.dto';
 import { CreateVariantDto } from './dto/create-products.dto';
 import { UpdateVariantDto } from './dto/update-variant.dto';
 import { Permissions } from '../common/decorators/permissions.decorator';
+import { UpdateProductWithVariantsDto } from './dto/update-product-with-variants.dto';
 
 @Controller('products')
 @UseGuards(TenantGuard, JwtAuthGuard, RbacGuard)
 export class ProductsController {
-  constructor(private readonly products: ProductsService) {}
+  constructor(private readonly products: ProductsService) { }
 
   // CREATE PRODUCT
   @Post()
@@ -29,6 +30,16 @@ export class ProductsController {
   @Permissions('inventory.products.read')
   list(@Req() req: any, @Query() q: ListProductsQueryDto) {
     return this.products.listProducts(req.tenantId, q);
+  }
+
+  @Patch(':productId/full')
+  @Permissions('inventory.products.update')
+  updateWithVariants(
+    @Req() req: any,
+    @Param('productId') productId: string,
+    @Body() dto: UpdateProductWithVariantsDto
+  ) {
+    return this.products.updateProductWithVariants(req.tenantId, productId, dto);
   }
 
   // GET ONE
