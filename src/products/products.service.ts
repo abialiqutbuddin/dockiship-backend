@@ -506,38 +506,145 @@ async getProduct(tenantId: string, productId: string) {
         });
     }
 
-    async updateVariant(tenantId: string, productId: string, variantId: string, dto: UpdateVariantDto) {
-        const variant = await this.prisma.productVariant.findFirst({
-            where: { id: variantId, productId, product: { tenantId } },
-        });
-        if (!variant) throw new NotFoundException('Variant not found');
+    // ProductsService
 
-        return this.prisma.productVariant.update({
-            where: { id: variantId },
-            data: {
-                sku: dto.sku,
-                sizeId: dto.sizeId,
-                sizeText: dto.sizeText,
-                barcode: dto.barcode,
-                status: dto.status,
-                condition: dto.condition,
-                isDraft: dto.isDraft,
-                publishedAt: dto.publishedAt,
-                weight: (dto as any).weight,
-                weightUnit: dto.weightUnit,
-                length: (dto as any).length,
-                width: (dto as any).width,
-                height: (dto as any).height,
-                dimensionUnit: dto.dimensionUnit,
-                attributes: dto.attributes as any,
-                // Add price fields
-                retailPrice: (dto as any).retailPrice,
-                retailCurrency: dto.retailCurrency,
-                originalPrice: (dto as any).originalPrice,
-                originalCurrency: dto.originalCurrency,
-            },
-        });
+async updateVariant(
+  tenantId: string,
+  productId: string,
+  variantId: string,
+  dto: UpdateVariantDto
+) {
+  // Ensure product exists and belongs to tenant
+  const product = await this.prisma.product.findFirst({
+    where: { id: productId, tenantId },
+    select: { id: true, tenantId: true },
+  });
+  if (!product) throw new NotFoundException('Product not found');
+
+  const isCreateIntent = !variantId || variantId === 'new' || variantId === 'create';
+
+  // Try to find the variant by id (when not explicitly create-intent)
+  const existing = !isCreateIntent
+    ? await this.prisma.productVariant.findFirst({
+        where: { id: variantId, productId },
+      })
+    : null;
+
+  // ---------- CREATE PATH ----------
+  if (isCreateIntent || !existing) {
+    if (!dto?.sku) {
+      throw new BadRequestException('SKU is required to create a variant');
     }
+
+    // Enforce SKU uniqueness within the product
+    const skuClash = await this.prisma.productVariant.findFirst({
+      where: { productId, sku: dto.sku },
+      select: { id: true },
+    });
+    if (skuClash) {
+      throw new BadRequestException('Variant SKU already exists for product');
+    }
+
+    const created = await this.prisma.productVariant.create({
+      data: {
+        productId,
+        sku: dto.sku,
+        sizeId: dto.sizeId,
+        sizeText: dto.sizeText,
+        barcode: dto.barcode,
+        status: dto.status,
+        condition: dto.condition,
+        isDraft: dto.isDraft ?? false,
+        publishedAt: dto.publishedAt ?? null,
+        weight: (dto as any).weight,
+        weightUnit: dto.weightUnit,
+        length: (dto as any).length,
+        width: (dto as any).width,
+        height: (dto as any).height,
+        dimensionUnit: dto.dimensionUnit,
+        attributes: (dto as any).attributes,
+        retailPrice: (dto as any).retailPrice,
+        retailCurrency: dto.retailCurrency,
+        originalPrice: (dto as any).originalPrice,
+        originalCurrency: dto.originalCurrency,
+      },
+    });
+
+    return { action: 'created', variant: created };
+  }
+
+  // ---------- UPDATE PATH ----------
+  // If SKU changes, enforce uniqueness
+  if (dto?.sku && dto.sku !== existing.sku) {
+    const skuClash = await this.prisma.productVariant.findFirst({
+      where: { productId, sku: dto.sku },
+      select: { id: true },
+    });
+    if (skuClash) {
+      throw new BadRequestException('Variant SKU already exists for product');
+    }
+  }
+
+  const updated = await this.prisma.productVariant.update({
+    where: { id: existing.id },
+    data: {
+      sku: dto.sku,
+      sizeId: dto.sizeId,
+      sizeText: dto.sizeText,
+      barcode: dto.barcode,
+      status: dto.status,
+      condition: dto.condition,
+      isDraft: dto.isDraft,
+      publishedAt: dto.publishedAt,
+      weight: (dto as any).weight,
+      weightUnit: dto.weightUnit,
+      length: (dto as any).length,
+      width: (dto as any).width,
+      height: (dto as any).height,
+      dimensionUnit: dto.dimensionUnit,
+      attributes: (dto as any).attributes,
+      retailPrice: (dto as any).retailPrice,
+      retailCurrency: dto.retailCurrency,
+      originalPrice: (dto as any).originalPrice,
+      originalCurrency: dto.originalCurrency,
+    },
+  });
+
+  return { action: 'updated', variant: updated };
+}
+
+    // async updateVariant(tenantId: string, productId: string, variantId: string, dto: UpdateVariantDto) {
+    //     const variant = await this.prisma.productVariant.findFirst({
+    //         where: { id: variantId, productId, product: { tenantId } },
+    //     });
+    //     if (!variant) throw new NotFoundException('Variant not found');
+
+    //     return this.prisma.productVariant.update({
+    //         where: { id: variantId },
+    //         data: {
+    //             sku: dto.sku,
+    //             sizeId: dto.sizeId,
+    //             sizeText: dto.sizeText,
+    //             barcode: dto.barcode,
+    //             status: dto.status,
+    //             condition: dto.condition,
+    //             isDraft: dto.isDraft,
+    //             publishedAt: dto.publishedAt,
+    //             weight: (dto as any).weight,
+    //             weightUnit: dto.weightUnit,
+    //             length: (dto as any).length,
+    //             width: (dto as any).width,
+    //             height: (dto as any).height,
+    //             dimensionUnit: dto.dimensionUnit,
+    //             attributes: dto.attributes as any,
+    //             // Add price fields
+    //             retailPrice: (dto as any).retailPrice,
+    //             retailCurrency: dto.retailCurrency,
+    //             originalPrice: (dto as any).originalPrice,
+    //             originalCurrency: dto.originalCurrency,
+    //         },
+    //     });
+    // }
 
     async removeVariant(tenantId: string, productId: string, variantId: string) {
         const variant = await this.prisma.productVariant.findFirst({ where: { id: variantId, productId, product: { tenantId } } });
