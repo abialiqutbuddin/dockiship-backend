@@ -1,6 +1,6 @@
 // ---------------------------------------------
 // src/products/products.controller.ts
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { TenantGuard } from '../common/guards/tenant.guard';
@@ -12,6 +12,11 @@ import { CreateVariantDto } from './dto/create-products.dto';
 import { UpdateVariantDto } from './dto/update-variant.dto';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { UpdateProductWithVariantsDto } from './dto/update-product-with-variants.dto';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import type { Request } from 'express';
+import { join, extname } from 'path';
+import { promises as fs } from 'fs';
 
 @Controller('products')
 @UseGuards(TenantGuard, JwtAuthGuard, RbacGuard)
@@ -110,5 +115,81 @@ export class ProductsController {
   @Permissions('inventory.products.read')
   listSizes(@Req() req: any, @Query('search') search?: string) {
     return this.products.listSizes(req.tenantId, search);
+  }
+
+  // IMAGES -------------------------------------------------
+  @Get(':productId/images')
+  @Permissions('inventory.products.read')
+  async listImages(@Req() req: any, @Param('productId') productId: string) {
+    return this.products.listProductImages(req.tenantId, productId);
+  }
+
+  @Post(':productId/images')
+  @Permissions('inventory.products.update')
+  @UseInterceptors(FilesInterceptor('images', 10, {
+    storage: diskStorage({
+      destination: (
+        req: Request,
+        file: Express.Multer.File,
+        cb: (error: Error | null, destination: string) => void,
+      ) => {
+        try {
+          const anyReq = req as any;
+          const tenantId = anyReq.tenantId as string;
+          const productId = anyReq.params?.productId as string;
+          const variantId = (anyReq.query?.variantId || anyReq.body?.variantId) as string | undefined;
+          const segments = [process.cwd(), 'uploads', `${tenantId}-${productId}`];
+          if (variantId) segments.push(variantId);
+          const dest = join(...segments);
+          fs.mkdir(dest, { recursive: true })
+            .then(() => cb(null, dest))
+            .catch((e) => cb(e as any, 'uploads'));
+        } catch (e) {
+          cb(e as any, 'uploads');
+        }
+      },
+      filename: (
+        req: Request,
+        file: Express.Multer.File,
+        cb: (error: Error | null, filename: string) => void,
+      ) => {
+        const base = String(file.originalname || 'image')
+          .replace(/\s+/g, '_')
+          .replace(/[^a-zA-Z0-9_\.-]/g, '')
+          .replace(/\.+/g, '.')
+          .slice(0, 80);
+        const ext = extname(base) || '.jpg';
+        const name = base.replace(ext, '') || 'image';
+        const stamp = Date.now();
+        cb(null, `${name}-${stamp}${ext.toLowerCase()}`);
+      }
+    })
+  }))
+  async uploadImages(
+    @Req() req: Request & { tenantId: string },
+    @Param('productId') productId: string,
+    @UploadedFiles() files: Array<Express.Multer.File>,
+    @Query('variantId') variantId?: string,
+  ) {
+    if (!Array.isArray(files) || files.length === 0) return [];
+    const tenantId = req.tenantId as string;
+    // Build URLs that match static serving path
+    const urls = files.map((f) => {
+      const parts = [`${tenantId}-${productId}`];
+      const vId = variantId || (req.body?.variantId as string | undefined);
+      if (vId) parts.push(vId);
+      return '/uploads/' + [...parts, f.filename].join('/');
+    });
+    return this.products.addProductImages(tenantId, productId, urls);
+  }
+
+  @Delete(':productId/images/:imageId')
+  @Permissions('inventory.products.update')
+  async removeImage(
+    @Req() req: any,
+    @Param('productId') productId: string,
+    @Param('imageId') imageId: string,
+  ) {
+    return this.products.removeProductImage(req.tenantId, productId, imageId);
   }
 }

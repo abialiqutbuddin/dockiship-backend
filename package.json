@@ -37,6 +37,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.3",
     "@types/joi": "^17.2.2",
+    "@types/multer": "^1.4.13",
     "@types/node": "^24.7.0",
     "@types/nodemailer": "^7.0.2",
     "@types/passport-jwt": "^4.0.1",

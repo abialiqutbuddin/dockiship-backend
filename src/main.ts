@@ -1,6 +1,8 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import * as express from 'express';
+import { join } from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -12,6 +14,10 @@ async function bootstrap() {
   });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // Serve uploaded files statically
+  const uploadDir = join(process.cwd(), 'uploads');
+  app.use('/uploads', express.static(uploadDir));
 
   const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
   const HOST = '0.0.0.0';

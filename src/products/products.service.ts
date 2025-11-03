@@ -8,6 +8,8 @@ import { UpdateVariantDto } from './dto/update-variant.dto';
 import { ListProductsQueryDto } from './dto/list-products.dto';
 import { ProductStatus, ProductCondition, WeightUnit, LengthUnit } from '@prisma/client';
 import { UpdateProductWithVariantsDto } from './dto/update-product-with-variants.dto';
+import { join } from 'path';
+import { promises as fs } from 'fs';
 
 @Injectable()
 export class ProductsService {
@@ -176,8 +178,13 @@ export class ProductsService {
                             status: true,
                             retailPrice: true, // This is a Decimal
                             stockOnHand: true, // <-- FIX 1: Use the correct field name
+                            // Added to consistently determine simple vs variant (matches getProduct logic)
+                            sizeId: true,
+                            sizeText: true,
+                            attributes: true,
                         },
                     },
+                    images: { select: { id: true, url: true } },
                     primarySupplier: { select: { id: true, companyName: true } },
                 },
             }),
@@ -195,34 +202,33 @@ export class ProductsService {
             let displayStock = 'N/A';
 
             if (variantCount === 1) {
-                // SIMPLE PRODUCT (Product with one variant)
-                const variant = ProductVariant[0];
-                displayType = 'Simple';
-                // Note: .toString() handles Decimal type from Prisma
-                displayPrice = variant.retailPrice ? `$${variant.retailPrice.toString()}` : 'N/A';
-                displayStock = `${variant.stockOnHand || 0} in stock`;
+                const v: any = ProductVariant[0];
+                const hasSizeish = !!v.sizeId || !!v.sizeText || (v.attributes && Object.keys(v.attributes || {}).length > 0);
+                const looksSimple = v.sku === (parentProduct as any).sku && !hasSizeish;
+
+                displayType = looksSimple ? 'Simple' : 'Variant (1)';
+                displayPrice = v?.retailPrice ? `$${v.retailPrice.toString()}` : 'N/A';
+                displayStock = `${v?.stockOnHand || 0} in stock`;
 
             } else if (variantCount > 1) {
                 // VARIANT PRODUCT
                 displayType = `Variant (${variantCount})`;
 
                 // Calculate price range
-                const prices = ProductVariant
-                    .map((v: { retailPrice: any; }) => v.retailPrice)
-                    .filter((p: null) => p !== null) as number[]; // Filter out nulls
+                const nums = ProductVariant
+                    .map((vv: any) => (vv?.retailPrice != null ? Number(vv.retailPrice) : null))
+                    .filter((n: any) => Number.isFinite(n)) as number[];
 
-                if (prices.length > 0) {
-                    const minPrice = Math.min(...prices);
-                    const maxPrice = Math.max(...prices);
-                    displayPrice = minPrice === maxPrice
-                        ? `$${minPrice.toString()}`
-                        : `$${minPrice.toString()} - $${maxPrice.toString()}`;
+                if (nums.length > 0) {
+                    const lo = Math.min(...nums);
+                    const hi = Math.max(...nums);
+                    displayPrice = lo === hi ? `$${lo.toString()}` : `$${lo.toString()} - $${hi.toString()}`;
                 }
 
                 // Calculate total stock
                 const totalStock = ProductVariant
-                    .map((v: { stockOnHand: any; }) => v.stockOnHand || 0)
-                    .reduce((sum: any, current: any) => sum + current, 0);
+                    .map((vv: any) => vv?.stockOnHand || 0)
+                    .reduce((sum: number, current: number) => sum + current, 0);
 
                 displayStock = `${totalStock} across ${variantCount} variants`;
             }
@@ -230,7 +236,7 @@ export class ProductsService {
             // Return the transformed product object for the API response
             return {
                 ...parentProduct,
-                type: displayType,     // e.g., "Variant (6)"
+                type: displayType,     // e.g., "Simple" or "Variant (n)"
                 price: displayPrice,   // e.g., "$19.99 - $21.99"
                 stock: displayStock,   // e.g., "240 across 6 variants"
                 variants: ProductVariant, // You can still send the minimal variant info
@@ -252,7 +258,7 @@ export class ProductsService {
             where: { id: productId, tenantId },
             include: {
                 _count: { select: { ProductVariant: true } },
-                ProductVariant: true,
+                ProductVariant: { include: { size: true } },
                 barcodes: true,
                 images: true,
                 tagLinks: { include: { tag: true } },
@@ -676,7 +682,7 @@ export class ProductsService {
             where: { id: productId, tenantId },
             include: {
                 _count: { select: { ProductVariant: true } },
-                ProductVariant: true,
+                ProductVariant: { include: { size: true } },
                 barcodes: true,
                 images: true,
                 tagLinks: { include: { tag: true } },
@@ -714,4 +720,34 @@ export class ProductsService {
         };
     }
 
+    // IMAGES ----------------------------------------------------
+    async addProductImages(tenantId: string, productId: string, urls: string[], alt?: string) {
+        if (!urls || urls.length === 0) return [];
+        const created = [] as any[];
+        for (const url of urls) {
+            const img = await this.prisma.productImage.create({
+                data: { tenantId, productId, url, alt: alt ?? null },
+            });
+            created.push(img);
+        }
+        return created;
+    }
+
+    async listProductImages(tenantId: string, productId: string) {
+        return this.prisma.productImage.findMany({ where: { tenantId, productId }, orderBy: { id: 'desc' } });
+    }
+
+    async removeProductImage(tenantId: string, productId: string, imageId: string) {
+        const pic = await this.prisma.productImage.findFirst({ where: { id: imageId, productId, tenantId } });
+        if (!pic) throw new NotFoundException('Image not found');
+        // Best-effort delete file from disk (url starts with /uploads/...)
+        try {
+            if (pic.url?.startsWith('/uploads/')) {
+                const abs = join(process.cwd(), pic.url);
+                await fs.unlink(abs).catch(() => {});
+            }
+        } catch {}
+        await this.prisma.productImage.delete({ where: { id: imageId } });
+        return { ok: true };
+    }
 }
