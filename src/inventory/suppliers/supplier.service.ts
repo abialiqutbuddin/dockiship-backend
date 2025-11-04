@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { PrismaService } from '../../database/prisma.service';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
@@ -68,4 +68,55 @@ export class SupplierService {
       data: { isActive: false },
     });
   }
+
+   /** List products linked to a supplier (with small projection) */
+  async listProducts(tenantId: string, supplierId: string, q?: string) {
+    const supplier = await this.prisma.supplier.findFirst({
+      where: { id: supplierId, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!supplier) throw new NotFoundException('Supplier not found');
+
+    return this.prisma.product.findMany({
+      where: {
+        tenantId,
+        primarySupplierId: supplierId,
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q} },
+                { sku: { contains: q} },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        //st: true,
+        images: { take: 1, select: { url: true } },
+      },
+    });
+  }
+
+  /** Unlink product.supplierId (safe for tenant) */
+  async unlinkProduct(tenantId: string, supplierId: string, productId: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, tenantId },
+      select: { id: true, primarySupplierId: true },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+    if (product.primarySupplierId !== supplierId) {
+      throw new ForbiddenException('Product is not linked to this supplier');
+    }
+
+    await this.prisma.product.update({
+      where: { id: productId },
+      data: { primarySupplierId: null },
+    });
+
+    return { ok: true };
+  }
+  
 }

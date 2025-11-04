@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Param, Patch, Post, UseGuards,
+  Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { SupplierService } from './supplier.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
@@ -53,5 +53,29 @@ export class SupplierController {
   @Permissions('suppliers.manage')
   async archive(@TenantId() tenantId: string, @Param('id') id: string) {
     return this.suppliers.archive(tenantId, id);
+  }
+
+    // GET /suppliers/:id/products
+  @Get(':id/products')
+  @Roles('Admin','Owner')
+  @Permissions('suppliers.read')
+  async listProducts(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Query('q') q?: string,        // optional search
+  ) {
+    return this.suppliers.listProducts(tenantId, id, q);
+  }
+
+  // DELETE /suppliers/:id/products/:productId  (unlink)
+  @Delete(':id/products/:productId')
+  @Roles('Admin','Owner')
+  @Permissions('suppliers.manage')
+  async unlinkProduct(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Param('productId') productId: string,
+  ) {
+    return this.suppliers.unlinkProduct(tenantId, id, productId);
   }
 }
