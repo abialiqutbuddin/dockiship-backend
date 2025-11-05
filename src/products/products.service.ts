@@ -41,6 +41,9 @@ export class ProductsService {
                 isDraft: productData.isDraft ?? false,
                 publishedAt: productData.publishedAt ?? null,
                 primarySupplierId: productData.primarySupplierId ?? null,
+                // initial purchasing snapshot if provided
+                lastPurchasePrice: (productData as any).lastPurchasePrice ?? null,
+                lastPurchaseCurr: (productData as any).lastPurchaseCurr ?? null,
                 // REMOVED: retailPrice, weight, condition, etc. from here
 
                 ProductVariant: {
@@ -67,6 +70,8 @@ export class ProductsService {
                             retailCurrency: v.retailCurrency,
                             originalPrice: v.originalPrice as any,
                             originalCurrency: v.originalCurrency,
+                            lastPurchasePrice: (v as any).lastPurchasePrice as any,
+                            lastPurchaseCurr: (v as any).lastPurchaseCurr,
                             // Stock fields default to 0
                         }))
                         :   // CASE 2: No variants provided (Simple Product)
@@ -89,6 +94,8 @@ export class ProductsService {
                             retailCurrency: productData.retailCurrency,
                             originalPrice: productData.originalPrice as any,
                             originalCurrency: productData.originalCurrency,
+                            lastPurchasePrice: (productData as any).lastPurchasePrice as any,
+                            lastPurchaseCurr: (productData as any).lastPurchaseCurr,
                             // Stock fields default to 0
                         }],
                 },
@@ -420,6 +427,9 @@ export class ProductsService {
                 isDraft: dto.isDraft,
                 publishedAt: dto.publishedAt,
                 primarySupplierId: dto.primarySupplierId,
+                // Allow updating purchasing snapshot at product level
+                lastPurchasePrice: (dto as any).lastPurchasePrice ?? undefined,
+                lastPurchaseCurr: (dto as any).lastPurchaseCurr ?? undefined,
 
                 // DO NOT UPDATE:
                 // retailPrice, weight, condition, etc.
@@ -509,6 +519,8 @@ export class ProductsService {
                 retailCurrency: dto.retailCurrency,
                 originalPrice: dto.originalPrice as any,
                 originalCurrency: dto.originalCurrency,
+                lastPurchasePrice: (dto as any).lastPurchasePrice as any,
+                lastPurchaseCurr: (dto as any).lastPurchaseCurr,
             },
         });
     }
@@ -542,6 +554,8 @@ export class ProductsService {
                 retailCurrency: dto.retailCurrency,
                 originalPrice: (dto as any).originalPrice,
                 originalCurrency: dto.originalCurrency,
+                lastPurchasePrice: (dto as any).lastPurchasePrice,
+                lastPurchaseCurr: (dto as any).lastPurchaseCurr,
             },
         });
     }
@@ -640,6 +654,8 @@ export class ProductsService {
                 retailCurrency: v.retailCurrency as any,
                 originalPrice: v.originalPrice as any,
                 originalCurrency: v.originalCurrency as any,
+                lastPurchasePrice: (v as any).lastPurchasePrice as any,
+                lastPurchaseCurr: (v as any).lastPurchaseCurr as any,
             };
 
             if (v.id) {
@@ -744,10 +760,152 @@ export class ProductsService {
         try {
             if (pic.url?.startsWith('/uploads/')) {
                 const abs = join(process.cwd(), pic.url);
-                await fs.unlink(abs).catch(() => {});
+                await fs.unlink(abs).catch(() => { });
             }
-        } catch {}
+        } catch { }
         await this.prisma.productImage.delete({ where: { id: imageId } });
         return { ok: true };
+    }
+
+    async listMarketplaceProviders(tenantId: string, q?: string) {
+        return this.prisma.tenantChannel.findMany({
+            where: {
+                tenantId,
+                ...(q ? { provider: { contains: q } } : {}),
+            },
+            distinct: ['provider'],
+            select: { provider: true },
+            orderBy: { provider: 'asc' },
+        });
+    }
+
+    async listMarketplaceChannels(tenantId: string, provider: string, q?: string) {
+        if (!provider?.trim()) throw new BadRequestException('provider is required');
+        return this.prisma.tenantChannel.findMany({
+            where: {
+                tenantId,
+                provider,
+                ...(q ? { name: { contains: q } } : {}),
+            },
+            select: { id: true, name: true, provider: true },
+            orderBy: { name: 'asc' },
+        });
+    }
+
+    async createMarketplaceChannel(tenantId: string, dto: { provider: string; name: string; accountId?: string; storeUrl?: string }) {
+        const provider = dto.provider.trim();
+        const name = dto.name.trim();
+        if (!provider || !name) throw new BadRequestException('provider and name are required');
+
+        // unique constraint: @@unique([tenantId, provider, name])
+        try {
+            return await this.prisma.tenantChannel.create({
+                data: {
+                    tenantId,
+                    provider,
+                    name,
+                    accountId: dto.accountId,
+                    storeUrl: dto.storeUrl,
+                    isActive: true,
+                },
+                select: { id: true, provider: true, name: true },
+            });
+        } catch (e: any) {
+            if (e?.code === 'P2002') {
+                // already exists → return existing
+                const existing = await this.prisma.tenantChannel.findFirst({
+                    where: { tenantId, provider, name },
+                    select: { id: true, provider: true, name: true },
+                });
+                if (existing) return existing;
+            }
+            throw e;
+        }
+    }
+
+    // --- MARKETPLACES: listings ---
+
+    async listProductListings(tenantId: string, productId: string) {
+        // includes both product level and variant-level listings
+        // and resolves variant SKU for UI
+        const [product, listings, variants] = await Promise.all([
+            this.prisma.product.findFirst({ where: { id: productId, tenantId }, select: { id: true } }),
+            this.prisma.channelListing.findMany({
+                where: { productId },
+                include: { channel: true },
+                orderBy: { createdAt: 'desc' },
+            }),
+            this.prisma.productVariant.findMany({
+                where: { productId },
+                select: { id: true, sku: true, sizeText: true },
+            }),
+        ]);
+        if (!product) throw new NotFoundException('Product not found');
+
+        const varMap = new Map(variants.map(v => [v.id, v]));
+        const variantListings = await this.prisma.channelListing.findMany({
+            where: { productVariantId: { in: variants.map(v => v.id) } },
+            include: { channel: true },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        return {
+            productListings: listings,
+            variantListings: variantListings.map(l => ({
+                ...l,
+                variantMeta: varMap.get(l.productVariantId!),
+            })),
+        };
+    }
+
+    async addProductListing(tenantId: string, productId: string, data: { provider: string; name: string; externalSku: string; units: number }) {
+        const product = await this.prisma.product.findFirst({ where: { id: productId, tenantId }, select: { id: true } });
+        if (!product) throw new NotFoundException('Product not found');
+
+        const channel = await this.createMarketplaceChannel(tenantId, { provider: data.provider, name: data.name });
+
+        try {
+            return await this.prisma.channelListing.create({
+                data: {
+                    tenantChannelId: channel.id,
+                    productId,                 // parent product
+                    externalSku: data.externalSku.trim(),
+                    units: data.units,
+                    status: 'active',
+                },
+            });
+        } catch (e: any) {
+            if (e?.code === 'P2002') {
+                throw new BadRequestException('Listing already exists for this channel/target or externalSku already used');
+            }
+            throw e;
+        }
+    }
+
+    async addVariantListing(tenantId: string, productId: string, data: { provider: string; name: string; externalSku: string; units: number; variantId: string }) {
+        const variant = await this.prisma.productVariant.findFirst({
+            where: { id: data.variantId, product: { id: productId, tenantId } },
+            select: { id: true, productId: true },
+        });
+        if (!variant) throw new NotFoundException('Variant not found');
+
+        const channel = await this.createMarketplaceChannel(tenantId, { provider: data.provider, name: data.name });
+
+        try {
+            return await this.prisma.channelListing.create({
+                data: {
+                    tenantChannelId: channel.id,
+                    productVariantId: variant.id, // variant listing
+                    externalSku: data.externalSku.trim(),
+                    units: data.units,
+                    status: 'active',
+                },
+            });
+        } catch (e: any) {
+            if (e?.code === 'P2002') {
+                throw new BadRequestException('Listing already exists for this channel/target or externalSku already used');
+            }
+            throw e;
+        }
     }
 }

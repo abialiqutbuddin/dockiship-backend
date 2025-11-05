@@ -140,6 +140,7 @@ model Tenant {
 
   @@index([slug])
   @@index([name])
+  TenantChannel TenantChannel[]
 }
 
 model UserTenant {
@@ -356,23 +357,9 @@ model Product {
   brand         String?
   status        ProductStatus    @default(active)
   originCountry String?          @db.VarChar(2)
-  //condition     ProductCondition @default(NEW)
-  // Physicals
-  // weight        Decimal?         @db.Decimal(10, 3)
-  // weightUnit    WeightUnit?      @default(g)
-  // length        Decimal?         @db.Decimal(10, 2)
-  // width         Decimal?         @db.Decimal(10, 2)
-  // height        Decimal?         @db.Decimal(10, 2)
-  // dimensionUnit LengthUnit?      @default(cm)
 
   isDraft     Boolean   @default(false)
   publishedAt DateTime?
-
-  // Commerce
-  // retailPrice       Decimal?  @db.Decimal(12, 2)
-  // retailCurrency    String?   @db.VarChar(3)
-  // originalPrice     Decimal?  @db.Decimal(12, 2) // MSRP / original
-  // originalCurrency  String?   @db.VarChar(3)
   lastPurchasePrice Decimal?  @db.Decimal(12, 2)
   lastPurchaseCurr  String?   @db.VarChar(3)
   lastPurchasedAt   DateTime?
@@ -397,6 +384,7 @@ model Product {
   @@index([tenantId])
   @@index([name])
   @@index([brand])
+  ChannelListing ChannelListing[]
 }
 
 // Multi-barcode
@@ -604,6 +592,9 @@ model ProductVariant {
   retailCurrency    String?   @db.VarChar(3)
   originalPrice     Decimal?  @db.Decimal(12, 2)
   originalCurrency  String?   @db.VarChar(3)
+  // Purchasing snapshot per-variant
+  lastPurchasePrice Decimal?  @db.Decimal(12, 2)
+  lastPurchaseCurr  String?   @db.VarChar(3)
 
   // Stock Snapshots (based on your InventoryTxn states)
   stockOnHand     Int @default(0)
@@ -622,5 +613,63 @@ model ProductVariant {
 
   @@unique([productId, sku], name: "uq_variant_sku_per_product")
   @@index([productId])
+  @@index([status])
+  ChannelListing ChannelListing[]
+}
+
+// =====================
+// Marketplaces Integration (Flexible)
+// =====================
+
+model TenantChannel {
+  id         String   @id @default(uuid())
+  tenantId   String
+  provider   String   // e.g. "Amazon", "Ebay", "Daraz", "Custom B2B"
+  name       String   // human-friendly label like "Amazon US - Main"
+  accountId  String?  // optional external ID for mapping to API account
+  storeUrl   String?
+  isActive   Boolean  @default(true)
+  credentials Json?   // optional credentials/config for integrations
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  listings ChannelListing[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, provider, name], name: "uq_channel_per_tenant_name")
+  @@index([tenantId])
+  @@index([provider])
+}
+
+model ChannelListing {
+  id               String   @id @default(uuid())
+  tenantChannelId  String
+  productId        String?
+  productVariantId String?
+  externalSku      String
+  externalListingId String?
+  url              String?
+  title            String?
+  price            Decimal? @db.Decimal(12, 2)
+  currency         String?  @db.VarChar(3)
+  units            Int      @default(0)
+  status           String?  @db.VarChar(20) // e.g. "active", "inactive", "out_of_stock"
+  lastSyncedAt     DateTime?
+  notes            String?
+
+  channel        TenantChannel   @relation(fields: [tenantChannelId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  product        Product?        @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantChannelId, externalSku], name: "uq_channel_externalSku")
+  @@unique([tenantChannelId, productId], name: "uq_channel_product")
+  @@unique([tenantChannelId, productVariantId], name: "uq_channel_variant")
+  @@index([tenantChannelId])
+  @@index([productId])
+  @@index([productVariantId])
   @@index([status])
 }

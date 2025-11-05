@@ -17,6 +17,7 @@ import { diskStorage } from 'multer';
 import type { Request } from 'express';
 import { join, extname } from 'path';
 import { promises as fs } from 'fs';
+import { CreateChannelDto, CreateListingForProductDto, CreateListingForVariantDto, ListChannelQueryDto, ListProviderQueryDto } from './dto/marketplace.dto';
 
 @Controller('products')
 @UseGuards(TenantGuard, JwtAuthGuard, RbacGuard)
@@ -192,4 +193,60 @@ export class ProductsController {
   ) {
     return this.products.removeProductImage(req.tenantId, productId, imageId);
   }
+
+
+  ///MARKET PLACE CHANNELS AND LISTINGS -------------------------------------
+  // Providers (searchable)
+  @Get('/marketplaces/providers')
+  @Permissions('inventory.products.manage')
+  getMarketplaceProviders(@Req() req: any, @Query() q: ListProviderQueryDto) {
+    return this.products.listMarketplaceProviders(req.tenantId, q?.q);
+  }
+
+  // Channels by provider (searchable)
+  @Get('/marketplaces/channels')
+  @Permissions('inventory.products.manage')
+  getMarketplaceChannels(@Req() req: any, @Query() q: ListChannelQueryDto) {
+    return this.products.listMarketplaceChannels(req.tenantId, q.provider, q?.q);
+  }
+
+  // Create channel (provider + name). Idempotent: returns existing if unique hit.
+  @Post('/marketplaces/channels')
+  @Permissions('inventory.products.manage')
+  createMarketplaceChannel(@Req() req: any, @Body() dto: CreateChannelDto) {
+    return this.products.createMarketplaceChannel(req.tenantId, dto);
+  }
+
+  // List all listings for a product (parent + per-variant)
+  @Get(':productId/marketplaces/listings')
+  @Permissions('inventory.products.manage')
+  listMarketplaceListings(
+    @Req() req: any,
+    @Param('productId') productId: string,
+  ) {
+    return this.products.listProductListings(req.tenantId, productId);
+  }
+
+  // Create a listing for the PARENT product
+  @Post(':productId/marketplaces/listings/product')
+  @Permissions('inventory.products.manage')
+  addMarketplaceListingForProduct(
+    @Req() req: any,
+    @Param('productId') productId: string,
+    @Body() dto: CreateListingForProductDto,
+  ) {
+    return this.products.addProductListing(req.tenantId, productId, dto);
+  }
+
+  // Create a listing for a SPECIFIC VARIANT
+  @Post(':productId/marketplaces/listings/variant')
+  @Permissions('inventory.products.manage')
+  addMarketplaceListingForVariant(
+    @Req() req: any,
+    @Param('productId') productId: string,
+    @Body() dto: CreateListingForVariantDto,
+  ) {
+    return this.products.addVariantListing(req.tenantId, productId, dto);
+  }
+
 }

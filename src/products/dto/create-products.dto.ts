@@ -19,6 +19,10 @@ export class CreateVariantDto {
   @IsOptional() @IsNumber() originalPrice?: number;
   @IsOptional() originalCurrency?: string | null;
 
+  // purchasing snapshot per variant
+  @IsOptional() @IsNumber() lastPurchasePrice?: number;
+  @IsOptional() lastPurchaseCurr?: string | null;
+
   @IsOptional() @IsNumber() weight?: number;
   @IsOptional() @IsEnum(WeightUnit) weightUnit?: WeightUnit;
   @IsOptional() @IsNumber() length?: number;
@@ -53,6 +57,10 @@ export class CreateProductDto {
   @IsOptional() retailCurrency?: string | null;
   @IsOptional() @IsNumber() originalPrice?: number;
   @IsOptional() originalCurrency?: string | null;
+
+  // purchasing snapshot (at product level)
+  @IsOptional() @IsNumber() lastPurchasePrice?: number;
+  @IsOptional() lastPurchaseCurr?: string | null;
 
   // relations
   @IsOptional() @IsUUID() primarySupplierId?: string | null;
