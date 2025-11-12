@@ -12,11 +12,16 @@ export class PermissionsService {
       orderBy: { name: 'asc' },
     });
 
-    return perms.map((p) => ({
-      id: p.id,
-      name: p.name,
-      module: p.name.split('.')[0], // e.g. inventory.create → inventory
-      action: p.name.split('.')[1], // e.g. inventory.create → create
-    }));
+    return perms.map((p) => {
+      const parts = (p.name || '').split('.').filter(Boolean);
+      const action = parts.length > 0 ? parts[parts.length - 1] : '';
+      const module = parts.length > 1 ? parts.slice(0, -1).join('.') : parts[0] || '';
+      return {
+        id: p.id,
+        name: p.name,
+        module,
+        action,
+      };
+    });
   }
 }

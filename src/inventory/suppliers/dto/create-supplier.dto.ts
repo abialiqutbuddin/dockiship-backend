@@ -1,4 +1,5 @@
 import { IsNotEmpty, IsOptional, IsEmail, IsString, IsISO31661Alpha2 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateSupplierDto {
   @IsNotEmpty()
@@ -11,6 +12,7 @@ export class CreateSupplierDto {
   currency!: string; // e.g. "USD", "PKR"
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsEmail()
   email?: string;
 

@@ -14,6 +14,7 @@ type MemberRow = {
     membershipId: string;
     status: string;
     createdAt: Date;
+    invitedAt?: Date | null;
     roles: string[];
 };
 
@@ -549,6 +550,7 @@ export class UserService {
             createdAt: m.user.createdAt,
             membershipId: m.id,
             status: m.status,
+            invitedAt: m.invitedAt ?? null,
             roles: m.roles.map((r) => r.role.name),
         }));
 

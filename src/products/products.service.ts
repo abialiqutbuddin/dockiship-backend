@@ -27,20 +27,39 @@ export class ProductsService {
     async createProduct(tenantId: string, dto: CreateProductDto) {
         const { variants, ...productData } = dto;
 
-        const exists = await this.prisma.product.findFirst({ where: { tenantId, sku: dto.sku } });
-        if (exists) throw new BadRequestException('Parent SKU already exists for tenant');
+        if ((dto as any).sku) {
+            const exists = await this.prisma.product.findFirst({ where: { tenantId, sku: (dto as any).sku } });
+            if (exists) throw new BadRequestException('Parent SKU already exists for tenant');
+        }
+
+        // Auto-generate SKU using initials + unique 8-digit number
+        const genInitials = (name?: string) => {
+            const s = (name || '').trim();
+            if (!s) return 'PRD';
+            return s.split(/\s+/).map(w => (w[0] || '').toUpperCase()).join('') || 'PRD';
+        };
+        const initials = genInitials(productData.name);
+        const makeDigits = () => String(Math.floor(Math.random() * 1e8)).padStart(8, '0');
+        let sku = ((dto as any).sku && String((dto as any).sku).trim()) || `${initials}-${makeDigits()}`;
+        // ensure unique per tenant if we generated it here
+        if (!((dto as any).sku)) {
+            for (let i = 0; i < 5; i++) {
+                const exists = await this.prisma.product.findFirst({ where: { tenantId, sku } });
+                if (!exists) break;
+                sku = `${initials}-${makeDigits()}`;
+            }
+        }
 
         return this.prisma.product.create({
             data: {
                 tenantId,
-                sku: productData.sku,
+                sku,
                 name: productData.name,
                 brand: productData.brand ?? null,
                 status: productData.status,
                 originCountry: productData.originCountry ?? null,
                 isDraft: productData.isDraft ?? false,
                 publishedAt: productData.publishedAt ?? null,
-                primarySupplierId: productData.primarySupplierId ?? null,
                 // initial purchasing snapshot if provided
                 lastPurchasePrice: (productData as any).lastPurchasePrice ?? null,
                 lastPurchaseCurr: (productData as any).lastPurchaseCurr ?? null,
@@ -53,6 +72,7 @@ export class ProductsService {
                             sku: v.sku,
                             sizeId: v.sizeId,
                             sizeText: v.sizeText,
+                            colorText: (v as any).colorText,
                             barcode: v.barcode,
                             status: v.status ?? productData.status, // Inherit parent status
                             condition: v.condition ?? productData.condition, // Inherit parent condition
@@ -77,12 +97,14 @@ export class ProductsService {
                         :   // CASE 2: No variants provided (Simple Product)
                         // Create one default variant using the parent SKU and data
                         [{
-                            sku: productData.sku, // Use parent SKU for the single variant
+                            sku, // Use parent SKU for the single variant
                             status: productData.status,
                             condition: productData.condition,
                             isDraft: productData.isDraft,
                             publishedAt: productData.publishedAt,
                             // Use parent-level data
+                            sizeText: (productData as any).sizeText,
+                            colorText: (productData as any).colorText,
                             weight: productData.weight as any,
                             weightUnit: productData.weightUnit,
                             length: productData.length as any,
@@ -192,7 +214,6 @@ export class ProductsService {
                         },
                     },
                     images: { select: { id: true, url: true } },
-                    primarySupplier: { select: { id: true, companyName: true } },
                 },
             }),
             this.prisma.product.count({ where }),
@@ -210,8 +231,9 @@ export class ProductsService {
 
             if (variantCount === 1) {
                 const v: any = ProductVariant[0];
-                const hasSizeish = !!v.sizeId || !!v.sizeText || (v.attributes && Object.keys(v.attributes || {}).length > 0);
-                const looksSimple = v.sku === (parentProduct as any).sku && !hasSizeish;
+                // Consider it simple when single variant matches parent SKU and has no explicit variant signals
+                const hasVariantSignals = !!v.sizeId || (v.attributes && Object.keys(v.attributes || {}).length > 0);
+                const looksSimple = v.sku === (parentProduct as any).sku && !hasVariantSignals;
 
                 displayType = looksSimple ? 'Simple' : 'Variant (1)';
                 displayPrice = v?.retailPrice ? `$${v.retailPrice.toString()}` : 'N/A';
@@ -270,7 +292,6 @@ export class ProductsService {
                 images: true,
                 tagLinks: { include: { tag: true } },
                 supplierLinks: { include: { supplier: true } },
-                primarySupplier: true,
             },
         });
 
@@ -283,11 +304,12 @@ export class ProductsService {
             kind = 'variant';
         } else if (variantCount === 1) {
             const v = product.ProductVariant[0];
-            const hasSizeish =
+            // Treat single-variant products as "simple" even if size/color text is present.
+            // Only explicit sizeId or custom attributes should mark it as a real variant.
+            const hasVariantSignals =
                 !!v.sizeId ||
-                !!v.sizeText ||
                 (v.attributes && Object.keys(v.attributes as any).length > 0);
-            const looksSimple = v.sku === product.sku && !hasSizeish;
+            const looksSimple = v.sku === product.sku && !hasVariantSignals;
             kind = looksSimple ? 'simple' : 'variant';
         }
 
@@ -301,6 +323,8 @@ export class ProductsService {
                 sku,
                 status,
                 condition,
+                sizeText,
+                colorText,
                 weight,
                 weightUnit,
                 length,
@@ -326,6 +350,8 @@ export class ProductsService {
                 sku,
                 status,
                 condition,
+                sizeText,
+                colorText,
                 weight,
                 weightUnit,
                 length,
@@ -409,33 +435,49 @@ export class ProductsService {
     // UPDATE PRODUCT
     // UPDATE PRODUCT (Parent fields only)
     async updateProduct(tenantId: string, productId: string, dto: UpdateProductDto) {
-        const found = await this.prisma.product.findFirst({ where: { id: productId, tenantId } });
+        const found = await this.prisma.product.findFirst({ where: { id: productId, tenantId }, include: { ProductVariant: true } });
         if (!found) throw new NotFoundException('Product not found');
 
-        // This DTO (UpdateProductDto) can contain price/weight fields
-        // We MUST explicitly ignore them here.
-        // Only update fields that belong to the parent Product.
-        return this.prisma.product.update({
-            where: { id: productId },
-            data: {
-                // Parent-level fields are OK to update
-                sku: dto.sku,
-                name: dto.name,
-                brand: dto.brand,
-                status: dto.status,
-                originCountry: dto.originCountry,
-                isDraft: dto.isDraft,
-                publishedAt: dto.publishedAt,
-                primarySupplierId: dto.primarySupplierId,
-                // Allow updating purchasing snapshot at product level
-                lastPurchasePrice: (dto as any).lastPurchasePrice ?? undefined,
-                lastPurchaseCurr: (dto as any).lastPurchaseCurr ?? undefined,
+        // Enforce unique parent SKU if provided
+        if ((dto as any).sku && (dto as any).sku !== found.sku) {
+            const clash = await this.prisma.product.findFirst({ where: { tenantId, sku: (dto as any).sku, NOT: { id: productId } } });
+            if (clash) throw new BadRequestException('Parent SKU already exists for tenant');
+        }
 
-                // DO NOT UPDATE:
-                // retailPrice, weight, condition, etc.
-                // These must be updated via updateVariant()
-            },
-            include: { ProductVariant: true }, // Include variants to return the full object
+        // Build parent update data
+        const parentData: any = {
+            sku: (dto as any).sku ?? undefined,
+            name: dto.name,
+            brand: dto.brand,
+            status: dto.status,
+            originCountry: dto.originCountry,
+            isDraft: dto.isDraft,
+            publishedAt: dto.publishedAt,
+            lastPurchasePrice: (dto as any).lastPurchasePrice ?? undefined,
+            lastPurchaseCurr: (dto as any).lastPurchaseCurr ?? undefined,
+        };
+
+        // If simple product (single variant acting as parent) and sku provided, sync the variant sku too
+        const variantCount = found.ProductVariant?.length ?? 0;
+        const isSimple = variantCount === 1;
+        const onlyVariantId = isSimple ? found.ProductVariant[0].id : null;
+
+        await this.prisma.$transaction(async (tx) => {
+            await tx.product.update({ where: { id: productId }, data: parentData });
+            if (isSimple && onlyVariantId) {
+                const update: any = {};
+                if ((dto as any).sku) update.sku = (dto as any).sku;
+                if ((dto as any).sizeText !== undefined) update.sizeText = (dto as any).sizeText;
+                if ((dto as any).colorText !== undefined) update.colorText = (dto as any).colorText;
+                if (Object.keys(update).length) {
+                    await tx.productVariant.update({ where: { id: onlyVariantId }, data: update });
+                }
+            }
+        });
+
+        return this.prisma.product.findFirst({
+            where: { id: productId, tenantId },
+            include: { ProductVariant: true },
         });
     }
     // async updateProduct(tenantId: string, productId: string, dto: UpdateProductDto) {
@@ -576,6 +618,12 @@ export class ProductsService {
 
         const { variants = [], removeMissing = false, ...parent } = dto;
 
+        // Enforce unique parent SKU if provided in parent
+        if ((parent as any).sku) {
+            const clash = await this.prisma.product.findFirst({ where: { tenantId, sku: (parent as any).sku, NOT: { id: productId } } });
+            if (clash) throw new BadRequestException('Parent SKU already exists for tenant');
+        }
+
         // 2) Load current variants
         const existing = await this.prisma.productVariant.findMany({
             where: { productId },
@@ -619,14 +667,13 @@ export class ProductsService {
             this.prisma.product.update({
                 where: { id: productId },
                 data: {
-                    sku: parent.sku,
+                    sku: (parent as any).sku ?? undefined,
                     name: parent.name,
                     brand: parent.brand,
                     status: parent.status,
                     originCountry: parent.originCountry,
                     isDraft: parent.isDraft,
                     publishedAt: parent.publishedAt,
-                    primarySupplierId: parent.primarySupplierId,
                 },
             })
         );
@@ -638,6 +685,7 @@ export class ProductsService {
                 sku: v.sku,
                 sizeId: v.sizeId,
                 sizeText: v.sizeText,
+                colorText: (v as any).colorText,
                 barcode: v.barcode,
                 status: v.status as any,
                 condition: v.condition as any,
@@ -703,7 +751,6 @@ export class ProductsService {
                 images: true,
                 tagLinks: { include: { tag: true } },
                 supplierLinks: { include: { supplier: true } },
-                primarySupplier: true,
             },
         });
     }
@@ -779,12 +826,12 @@ export class ProductsService {
         });
     }
 
-    async listMarketplaceChannels(tenantId: string, provider: string, q?: string) {
-        if (!provider?.trim()) throw new BadRequestException('provider is required');
+    async listMarketplaceChannels(tenantId: string, provider?: string, q?: string) {
+        const hasProvider = !!provider && provider.trim().length > 0;
         return this.prisma.tenantChannel.findMany({
             where: {
                 tenantId,
-                provider,
+                ...(hasProvider ? { provider: provider!.trim() } : {}),
                 ...(q ? { name: { contains: q } } : {}),
             },
             select: { id: true, name: true, provider: true },
@@ -792,8 +839,8 @@ export class ProductsService {
         });
     }
 
-    async createMarketplaceChannel(tenantId: string, dto: { provider: string; name: string; accountId?: string; storeUrl?: string }) {
-        const provider = dto.provider.trim();
+    async createMarketplaceChannel(tenantId: string, dto: { provider?: string; productName?: string; name: string; accountId?: string; storeUrl?: string }) {
+        const provider = (dto.productName ?? dto.provider ?? '').trim();
         const name = dto.name.trim();
         if (!provider || !name) throw new BadRequestException('provider and name are required');
 
@@ -858,18 +905,19 @@ export class ProductsService {
         };
     }
 
-    async addProductListing(tenantId: string, productId: string, data: { provider: string; name: string; externalSku: string; units: number }) {
+    async addProductListing(tenantId: string, productId: string, data: { provider?: string; productName?: string; name: string; externalSku?: string; units: number }) {
         const product = await this.prisma.product.findFirst({ where: { id: productId, tenantId }, select: { id: true } });
         if (!product) throw new NotFoundException('Product not found');
 
-        const channel = await this.createMarketplaceChannel(tenantId, { provider: data.provider, name: data.name });
+        const channel = await this.createMarketplaceChannel(tenantId, { provider: data.provider, productName: data.productName, name: data.name });
 
         try {
+            const externalSku = data.externalSku && data.externalSku.trim() ? data.externalSku.trim() : null;
             return await this.prisma.channelListing.create({
                 data: {
                     tenantChannelId: channel.id,
                     productId,                 // parent product
-                    externalSku: data.externalSku.trim(),
+                    externalSku: externalSku ?? undefined,
                     units: data.units,
                     status: 'active',
                 },
@@ -882,21 +930,22 @@ export class ProductsService {
         }
     }
 
-    async addVariantListing(tenantId: string, productId: string, data: { provider: string; name: string; externalSku: string; units: number; variantId: string }) {
+    async addVariantListing(tenantId: string, productId: string, data: { provider?: string; productName?: string; name: string; externalSku?: string; units: number; variantId: string }) {
         const variant = await this.prisma.productVariant.findFirst({
             where: { id: data.variantId, product: { id: productId, tenantId } },
-            select: { id: true, productId: true },
+            select: { id: true, sku: true, productId: true },
         });
         if (!variant) throw new NotFoundException('Variant not found');
 
-        const channel = await this.createMarketplaceChannel(tenantId, { provider: data.provider, name: data.name });
+        const channel = await this.createMarketplaceChannel(tenantId, { provider: data.provider, productName: data.productName, name: data.name });
 
         try {
+            const externalSku = data.externalSku && data.externalSku.trim() ? data.externalSku.trim() : variant.sku;
             return await this.prisma.channelListing.create({
                 data: {
                     tenantChannelId: channel.id,
                     productVariantId: variant.id, // variant listing
-                    externalSku: data.externalSku.trim(),
+                    externalSku,
                     units: data.units,
                     status: 'active',
                 },

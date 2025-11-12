@@ -1,10 +1,5 @@
-import {
-  IsOptional,
-  IsString,
-  IsEmail,
-  IsISO31661Alpha2,
-  MaxLength,
-} from 'class-validator';
+import { IsOptional, IsString, IsEmail, IsISO31661Alpha2, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class UpdateSupplierDto {
   @IsOptional()
@@ -17,6 +12,7 @@ export class UpdateSupplierDto {
   currency?: string; // e.g. "USD", "PKR"
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsEmail()
   email?: string;
 

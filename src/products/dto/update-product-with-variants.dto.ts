@@ -15,6 +15,7 @@ export class VariantUpsertDto implements CreateVariantDto {
     sku!: string;
     @IsOptional() sizeId?: string;            // no `null`
     @IsOptional() sizeText?: string;          // no `null`
+    @IsOptional() colorText?: string;
     @IsOptional() barcode?: string;
     @IsOptional() Status?: string;
     @IsOptional() Condition?: string;

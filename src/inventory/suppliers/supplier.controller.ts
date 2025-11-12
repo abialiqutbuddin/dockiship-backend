@@ -17,28 +17,24 @@ export class SupplierController {
   constructor(private readonly suppliers: SupplierService) {}
 
   @Post()
-  @Roles('Admin','Owner')
   @Permissions('suppliers.manage')
   async create(@TenantId() tenantId: string, @Body() dto: CreateSupplierDto) {
     return this.suppliers.create(tenantId, dto);
   }
 
   @Get()
-  @Roles('Admin','Owner')
-  @Permissions('suppliers.read')
+  @Permissions('suppliers.read', 'suppliers.manage')
   async list(@TenantId() tenantId: string) {
     return this.suppliers.list(tenantId);
   }
 
   @Get(':id')
-  @Roles('Admin','Owner')
-  @Permissions('suppliers.read')
+  @Permissions('suppliers.read', 'suppliers.manage')
   async getOne(@TenantId() tenantId: string, @Param('id') id: string) {
     return this.suppliers.getById(tenantId, id);
   }
 
   @Patch(':id')
-  @Roles('Admin','Owner')
   @Permissions('suppliers.manage')
   async update(
     @TenantId() tenantId: string,
@@ -49,7 +45,6 @@ export class SupplierController {
   }
 
   @Patch(':id/archive')
-  @Roles('Admin','Owner')
   @Permissions('suppliers.manage')
   async archive(@TenantId() tenantId: string, @Param('id') id: string) {
     return this.suppliers.archive(tenantId, id);
@@ -57,8 +52,7 @@ export class SupplierController {
 
     // GET /suppliers/:id/products
   @Get(':id/products')
-  @Roles('Admin','Owner')
-  @Permissions('suppliers.read')
+  @Permissions('suppliers.read', 'suppliers.manage')
   async listProducts(
     @TenantId() tenantId: string,
     @Param('id') id: string,
@@ -69,7 +63,6 @@ export class SupplierController {
 
   // DELETE /suppliers/:id/products/:productId  (unlink)
   @Delete(':id/products/:productId')
-  @Roles('Admin','Owner')
   @Permissions('suppliers.manage')
   async unlinkProduct(
     @TenantId() tenantId: string,
@@ -78,4 +71,18 @@ export class SupplierController {
   ) {
     return this.suppliers.unlinkProduct(tenantId, id, productId);
   }
+
+  // POST /suppliers/:id/products  (link products to supplier)
+  @Post(':id/products')
+  @Permissions('suppliers.manage')
+  async linkProducts(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Body('productIds') productIds: string[] = [],
+    @Body('lastPurchasePrice') lastPurchasePrice?: number,
+    @Body('currency') currency?: string,
+  ) {
+    return this.suppliers.linkProducts(tenantId, id, productIds, { lastPurchasePrice, currency });
+  }
+
 }

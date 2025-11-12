@@ -7,7 +7,7 @@ export class ListProviderQueryDto {
 
 export class ListChannelQueryDto {
   @IsString()
-  provider!: string;
+  productName!: string; // renamed from provider
 
   @IsOptional() @IsString()
   q?: string;
@@ -15,7 +15,7 @@ export class ListChannelQueryDto {
 
 export class CreateChannelDto {
   @IsString() @IsNotEmpty()
-  provider!: string;
+  productName!: string; // renamed from provider
 
   @IsString() @IsNotEmpty()
   name!: string;
@@ -30,13 +30,13 @@ export class CreateChannelDto {
 export class CreateListingForProductDto {
   // create a listing for the parent product
   @IsString() @IsNotEmpty()
-  provider!: string;
+  productName!: string; // renamed from provider
 
   @IsString() @IsNotEmpty()
   name!: string; // channel name
 
-  @IsString() @IsNotEmpty()
-  externalSku!: string;
+  @IsOptional() @IsString()
+  externalSku?: string;
 
   @IsInt() @Min(0)
   units!: number;

@@ -26,20 +26,20 @@ export class ProductsController {
 
   // CREATE PRODUCT
   @Post()
-  @Permissions('inventory.products.create') // <-- replace as needed
+  @Permissions('inventory.product.manage')
   create(@Req() req: any, @Body() dto: CreateProductDto) {
     return this.products.createProduct(req.tenantId, dto);
   }
 
   // LIST PRODUCTS (paginated)
   @Get()
-  @Permissions('inventory.products.read')
+  @Permissions('inventory.product.read', 'inventory.product.manage')
   list(@Req() req: any, @Query() q: ListProductsQueryDto) {
     return this.products.listProducts(req.tenantId, q);
   }
 
   @Patch(':productId/full')
-  @Permissions('inventory.products.update')
+  @Permissions('inventory.product.manage')
   updateWithVariants(
     @Req() req: any,
     @Param('productId') productId: string,
@@ -50,46 +50,46 @@ export class ProductsController {
 
   // GET ONE
   @Get(':productId')
-  @Permissions('inventory.products.read')
+  @Permissions('inventory.product.read', 'inventory.product.manage')
   getOne(@Req() req: any, @Param('productId') productId: string) {
     return this.products.getProduct(req.tenantId, productId);
   }
 
   // UPDATE
   @Patch(':productId')
-  @Permissions('inventory.products.update')
+  @Permissions('inventory.product.manage')
   update(@Req() req: any, @Param('productId') productId: string, @Body() dto: UpdateProductDto) {
     return this.products.updateProduct(req.tenantId, productId, dto);
   }
 
   // DELETE
   @Delete(':productId')
-  @Permissions('inventory.products.delete')
+  @Permissions('inventory.product.manage')
   remove(@Req() req: any, @Param('productId') productId: string) {
     return this.products.deleteProduct(req.tenantId, productId);
   }
 
   // PUBLISH / UNPUBLISH
   @Post(':productId/publish')
-  @Permissions('inventory.products.publish')
+  @Permissions('inventory.product.manage')
   publish(@Req() req: any, @Param('productId') productId: string) {
     return this.products.publish(req.tenantId, productId);
   }
   @Post(':productId/unpublish')
-  @Permissions('inventory.products.publish')
+  @Permissions('inventory.product.manage')
   unpublish(@Req() req: any, @Param('productId') productId: string) {
     return this.products.unpublish(req.tenantId, productId);
   }
 
   // VARIANTS -------------------------------------
   @Post(':productId/variants')
-  @Permissions('inventory.variants.create')
+  @Permissions('inventory.product.manage')
   addVariant(@Req() req: any, @Param('productId') productId: string, @Body() dto: CreateVariantDto) {
     return this.products.addVariant(req.tenantId, productId, dto);
   }
 
   @Patch(':productId/variants/:variantId')
-  @Permissions('inventory.variants.update')
+  @Permissions('inventory.product.manage')
   updateVariant(
     @Req() req: any,
     @Param('productId') productId: string,
@@ -100,33 +100,33 @@ export class ProductsController {
   }
 
   @Delete(':productId/variants/:variantId')
-  @Permissions('inventory.variants.delete')
+  @Permissions('inventory.product.manage')
   removeVariant(@Req() req: any, @Param('productId') productId: string, @Param('variantId') variantId: string) {
     return this.products.removeVariant(req.tenantId, productId, variantId);
   }
 
   // ENUMS / SIZES --------------------------------
   @Get('/meta/enums')
-  @Permissions('inventory.products.read')
+  @Permissions('inventory.product.read', 'inventory.product.manage')
   getEnums() {
     return this.products.enums();
   }
 
   @Get('/meta/sizes')
-  @Permissions('inventory.products.read')
+  @Permissions('inventory.product.read', 'inventory.product.manage')
   listSizes(@Req() req: any, @Query('search') search?: string) {
     return this.products.listSizes(req.tenantId, search);
   }
 
   // IMAGES -------------------------------------------------
   @Get(':productId/images')
-  @Permissions('inventory.products.read')
+  @Permissions('inventory.product.read', 'inventory.product.manage')
   async listImages(@Req() req: any, @Param('productId') productId: string) {
     return this.products.listProductImages(req.tenantId, productId);
   }
 
   @Post(':productId/images')
-  @Permissions('inventory.products.update')
+  @Permissions('inventory.product.manage')
   @UseInterceptors(FilesInterceptor('images', 10, {
     storage: diskStorage({
       destination: (
@@ -185,7 +185,7 @@ export class ProductsController {
   }
 
   @Delete(':productId/images/:imageId')
-  @Permissions('inventory.products.update')
+  @Permissions('inventory.product.manage')
   async removeImage(
     @Req() req: any,
     @Param('productId') productId: string,
@@ -198,28 +198,28 @@ export class ProductsController {
   ///MARKET PLACE CHANNELS AND LISTINGS -------------------------------------
   // Providers (searchable)
   @Get('/marketplaces/providers')
-  @Permissions('inventory.products.manage')
+  @Permissions('inventory.product.manage')
   getMarketplaceProviders(@Req() req: any, @Query() q: ListProviderQueryDto) {
     return this.products.listMarketplaceProviders(req.tenantId, q?.q);
   }
 
   // Channels by provider (searchable)
   @Get('/marketplaces/channels')
-  @Permissions('inventory.products.manage')
+  @Permissions('inventory.product.manage')
   getMarketplaceChannels(@Req() req: any, @Query() q: ListChannelQueryDto) {
-    return this.products.listMarketplaceChannels(req.tenantId, q.provider, q?.q);
+    return this.products.listMarketplaceChannels(req.tenantId, (q as any).productName ?? (q as any).provider, q?.q);
   }
 
   // Create channel (provider + name). Idempotent: returns existing if unique hit.
   @Post('/marketplaces/channels')
-  @Permissions('inventory.products.manage')
+  @Permissions('inventory.product.manage')
   createMarketplaceChannel(@Req() req: any, @Body() dto: CreateChannelDto) {
-    return this.products.createMarketplaceChannel(req.tenantId, dto);
+    return this.products.createMarketplaceChannel(req.tenantId, dto as any);
   }
 
   // List all listings for a product (parent + per-variant)
   @Get(':productId/marketplaces/listings')
-  @Permissions('inventory.products.manage')
+  @Permissions('inventory.product.read')
   listMarketplaceListings(
     @Req() req: any,
     @Param('productId') productId: string,
@@ -229,7 +229,7 @@ export class ProductsController {
 
   // Create a listing for the PARENT product
   @Post(':productId/marketplaces/listings/product')
-  @Permissions('inventory.products.manage')
+  @Permissions('inventory.product.manage')
   addMarketplaceListingForProduct(
     @Req() req: any,
     @Param('productId') productId: string,
@@ -240,7 +240,7 @@ export class ProductsController {
 
   // Create a listing for a SPECIFIC VARIANT
   @Post(':productId/marketplaces/listings/variant')
-  @Permissions('inventory.products.manage')
+  @Permissions('inventory.product.manage')
   addMarketplaceListingForVariant(
     @Req() req: any,
     @Param('productId') productId: string,

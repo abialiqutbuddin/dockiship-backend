@@ -8,6 +8,7 @@ export class CreateVariantDto {
   @IsString() sku!: string;
   @IsOptional() @IsUUID() sizeId?: string;
   @IsOptional() @IsString() sizeText?: string;
+  @IsOptional() @IsString() colorText?: string;
   @IsOptional() @IsString() barcode?: string;
   @IsOptional() @IsEnum(ProductStatus) status?: ProductStatus;
   @IsOptional() @IsEnum(ProductCondition) condition?: ProductCondition;
@@ -39,6 +40,9 @@ export class CreateProductDto {
   @IsOptional() @IsEnum(ProductStatus) status?: ProductStatus;
   @IsOptional() originCountry?: string | null;
   @IsOptional() @IsEnum(ProductCondition) condition?: ProductCondition;
+  // Simple product helpers (applied to default variant when no variants array provided)
+  @IsOptional() @IsString() sizeText?: string;
+  @IsOptional() @IsString() colorText?: string;
 
   // physicals
   @IsOptional() @IsNumber() weight?: number;
@@ -62,8 +66,7 @@ export class CreateProductDto {
   @IsOptional() @IsNumber() lastPurchasePrice?: number;
   @IsOptional() lastPurchaseCurr?: string | null;
 
-  // relations
-  @IsOptional() @IsUUID() primarySupplierId?: string | null;
+  // relations: primary supplier removed; use ProductSupplier join links
 
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CreateVariantDto)
   variants?: CreateVariantDto[];
