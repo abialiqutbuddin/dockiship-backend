@@ -6,7 +6,7 @@ import { CreateProductDto, CreateVariantDto } from './dto/create-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateVariantDto } from './dto/update-variant.dto';
 import { ListProductsQueryDto } from './dto/list-products.dto';
-import { ProductStatus, ProductCondition, WeightUnit, LengthUnit } from '@prisma/client';
+import { ProductStatus, ProductCondition, WeightUnit, LengthUnit, PackagingType } from '@prisma/client';
 import { UpdateProductWithVariantsDto } from './dto/update-product-with-variants.dto';
 import { join } from 'path';
 import { promises as fs } from 'fs';
@@ -20,6 +20,20 @@ export class ProductsService {
         if (tenantIdFromEntity && tenantIdFromEntity !== tenantIdFromReq) {
             throw new BadRequestException('Tenant mismatch');
         }
+    }
+
+    private resolvePackaging(type?: PackagingType | null, quantity?: number | null) {
+        if (!type) {
+            return { packagingType: null, packagingQuantity: null };
+        }
+        if (type === PackagingType.PAIR) {
+            return { packagingType: type, packagingQuantity: 2 };
+        }
+        const numeric = quantity != null ? Number(quantity) : Number.NaN;
+        if (!Number.isFinite(numeric) || numeric < 1) {
+            throw new BadRequestException(`Packaging quantity must be provided and >= 1 when packaging type is ${type}.`);
+        }
+        return { packagingType: type, packagingQuantity: Math.trunc(numeric) };
     }
 
     // CREATE PRODUCT (with optional variants)
@@ -68,7 +82,12 @@ export class ProductsService {
                 ProductVariant: {
                     create: (variants && variants.length > 0)
                         ?   // CASE 1: Variants are provided (Variant Product)
-                        variants.map((v) => ({
+                        variants.map((v) => {
+                            const packaging = this.resolvePackaging(
+                                (v as any).packagingType ?? null,
+                                (v as any).packagingQuantity ?? null,
+                            );
+                            return {
                             sku: v.sku,
                             sizeId: v.sizeId,
                             sizeText: v.sizeText,
@@ -92,11 +111,19 @@ export class ProductsService {
                             originalCurrency: v.originalCurrency,
                             lastPurchasePrice: (v as any).lastPurchasePrice as any,
                             lastPurchaseCurr: (v as any).lastPurchaseCurr,
+                            packagingType: packaging.packagingType,
+                            packagingQuantity: packaging.packagingQuantity,
                             // Stock fields default to 0
-                        }))
+                            };
+                        })
                         :   // CASE 2: No variants provided (Simple Product)
                         // Create one default variant using the parent SKU and data
-                        [{
+                        (() => {
+                            const packaging = this.resolvePackaging(
+                                (productData as any).packagingType ?? null,
+                                (productData as any).packagingQuantity ?? null,
+                            );
+                            return [{
                             sku, // Use parent SKU for the single variant
                             status: productData.status,
                             condition: productData.condition,
@@ -118,8 +145,11 @@ export class ProductsService {
                             originalCurrency: productData.originalCurrency,
                             lastPurchasePrice: (productData as any).lastPurchasePrice as any,
                             lastPurchaseCurr: (productData as any).lastPurchaseCurr,
+                            packagingType: packaging.packagingType,
+                            packagingQuantity: packaging.packagingQuantity,
                             // Stock fields default to 0
-                        }],
+                            }];
+                        })(),
                 },
             },
             include: { ProductVariant: true },
@@ -211,6 +241,8 @@ export class ProductsService {
                             sizeId: true,
                             sizeText: true,
                             attributes: true,
+                            packagingType: true,
+                            packagingQuantity: true,
                         },
                     },
                     images: { select: { id: true, url: true } },
@@ -339,6 +371,8 @@ export class ProductsService {
                 stockReserved,
                 stockInTransit,
                 attributes,
+                packagingType,
+                packagingQuantity,
                 ...restVariant
             } = v;
 
@@ -366,6 +400,8 @@ export class ProductsService {
                 stockReserved,
                 stockInTransit,
                 attributes,
+                packagingType,
+                packagingQuantity,
                 kind,
                 type,
                 variantCount,
@@ -460,6 +496,7 @@ export class ProductsService {
         // If simple product (single variant acting as parent) and sku provided, sync the variant sku too
         const variantCount = found.ProductVariant?.length ?? 0;
         const isSimple = variantCount === 1;
+        const onlyVariant = isSimple ? found.ProductVariant[0] : null;
         const onlyVariantId = isSimple ? found.ProductVariant[0].id : null;
 
         await this.prisma.$transaction(async (tx) => {
@@ -469,6 +506,16 @@ export class ProductsService {
                 if ((dto as any).sku) update.sku = (dto as any).sku;
                 if ((dto as any).sizeText !== undefined) update.sizeText = (dto as any).sizeText;
                 if ((dto as any).colorText !== undefined) update.colorText = (dto as any).colorText;
+                if ((dto as any).packagingType !== undefined || (dto as any).packagingQuantity !== undefined) {
+                    const packaging = this.resolvePackaging(
+                        ((dto as any).packagingType !== undefined ? (dto as any).packagingType : onlyVariant?.packagingType) ?? null,
+                        (dto as any).packagingQuantity !== undefined
+                            ? (dto as any).packagingQuantity
+                            : ((dto as any).packagingType === undefined ? onlyVariant?.packagingQuantity : undefined) ?? null,
+                    );
+                    update.packagingType = packaging.packagingType;
+                    update.packagingQuantity = packaging.packagingQuantity;
+                }
                 if (Object.keys(update).length) {
                     await tx.productVariant.update({ where: { id: onlyVariantId }, data: update });
                 }
@@ -537,6 +584,7 @@ export class ProductsService {
         if (!product) throw new NotFoundException('Product not found');
         const exists = await this.prisma.productVariant.findFirst({ where: { productId, sku: dto.sku } });
         if (exists) throw new BadRequestException('Variant SKU already exists for product');
+        const packaging = this.resolvePackaging(dto.packagingType ?? null, (dto as any).packagingQuantity ?? null);
 
         return this.prisma.productVariant.create({
             data: {
@@ -563,6 +611,8 @@ export class ProductsService {
                 originalCurrency: dto.originalCurrency,
                 lastPurchasePrice: (dto as any).lastPurchasePrice as any,
                 lastPurchaseCurr: (dto as any).lastPurchaseCurr,
+                packagingType: packaging.packagingType,
+                packagingQuantity: packaging.packagingQuantity,
             },
         });
     }
@@ -572,6 +622,17 @@ export class ProductsService {
             where: { id: variantId, productId, product: { tenantId } },
         });
         if (!variant) throw new NotFoundException('Variant not found');
+        const packagingTouched =
+            dto.packagingType !== undefined ||
+            (dto as any).packagingQuantity !== undefined;
+        const packaging = packagingTouched
+            ? this.resolvePackaging(
+                (dto.packagingType !== undefined ? dto.packagingType : variant.packagingType) ?? null,
+                (dto as any).packagingQuantity !== undefined
+                    ? (dto as any).packagingQuantity
+                    : (dto.packagingType === undefined ? variant.packagingQuantity : undefined) ?? null,
+            )
+            : null;
 
         return this.prisma.productVariant.update({
             where: { id: variantId },
@@ -598,6 +659,10 @@ export class ProductsService {
                 originalCurrency: dto.originalCurrency,
                 lastPurchasePrice: (dto as any).lastPurchasePrice,
                 lastPurchaseCurr: (dto as any).lastPurchaseCurr,
+                ...(packaging ? {
+                    packagingType: packaging.packagingType,
+                    packagingQuantity: packaging.packagingQuantity,
+                } : {}),
             },
         });
     }
@@ -680,6 +745,16 @@ export class ProductsService {
 
         // 4b) Upsert variants (create if no id, update if id)
         for (const v of variants) {
+            const packagingTouched =
+                !v.id ||
+                (v as any).packagingType !== undefined ||
+                (v as any).packagingQuantity !== undefined;
+            const packaging = packagingTouched
+                ? this.resolvePackaging(
+                    (v as any).packagingType ?? null,
+                    (v as any).packagingQuantity ?? null,
+                )
+                : null;
             const data = {
                 productId,
                 sku: v.sku,
@@ -704,6 +779,10 @@ export class ProductsService {
                 originalCurrency: v.originalCurrency as any,
                 lastPurchasePrice: (v as any).lastPurchasePrice as any,
                 lastPurchaseCurr: (v as any).lastPurchaseCurr as any,
+                ...(packaging ? {
+                    packagingType: packaging.packagingType,
+                    packagingQuantity: packaging.packagingQuantity,
+                } : {}),
             };
 
             if (v.id) {
@@ -780,6 +859,7 @@ export class ProductsService {
             ProductCondition: Object.values(ProductCondition),
             WeightUnit: Object.values(WeightUnit),
             LengthUnit: Object.values(LengthUnit),
+            PackagingType: Object.values(PackagingType),
         };
     }
 

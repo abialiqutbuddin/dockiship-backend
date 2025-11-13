@@ -1,8 +1,8 @@
 // ---------------------------------------------
 // src/products/dto/create-product.dto.ts
-import { IsArray, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { LengthUnit, ProductCondition, ProductStatus, WeightUnit } from '@prisma/client';
+import { LengthUnit, PackagingType, ProductCondition, ProductStatus, WeightUnit } from '@prisma/client';
 
 export class CreateVariantDto {
   @IsString() sku!: string;
@@ -31,6 +31,8 @@ export class CreateVariantDto {
   @IsOptional() @IsNumber() height?: number;
   @IsOptional() @IsEnum(LengthUnit) dimensionUnit?: LengthUnit;
   @IsOptional() attributes?: Record<string, any>;
+  @IsOptional() @IsEnum(PackagingType) packagingType?: PackagingType;
+  @IsOptional() @IsInt() @Min(1) packagingQuantity?: number;
 }
 
 export class CreateProductDto {
@@ -67,6 +69,9 @@ export class CreateProductDto {
   @IsOptional() lastPurchaseCurr?: string | null;
 
   // relations: primary supplier removed; use ProductSupplier join links
+
+  @IsOptional() @IsEnum(PackagingType) packagingType?: PackagingType;
+  @IsOptional() @IsInt() @Min(1) packagingQuantity?: number;
 
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CreateVariantDto)
   variants?: CreateVariantDto[];

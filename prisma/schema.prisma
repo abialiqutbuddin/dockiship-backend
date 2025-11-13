@@ -88,6 +88,12 @@ enum StockState {
   RESERVED
 }
 
+enum PackagingType {
+  PAIR
+  UNITS
+  PIECES_PER_PACK
+}
+
 // =====================
 // Core Identity & RBAC
 // =====================
@@ -603,6 +609,9 @@ model ProductVariant {
 
   // optional attributes for future flexibility, e.g., {"inseam":"32","waist":"30"}
   attributes Json?
+
+  packagingType     PackagingType?
+  packagingQuantity Int?
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   size    Size?   @relation(fields: [sizeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
