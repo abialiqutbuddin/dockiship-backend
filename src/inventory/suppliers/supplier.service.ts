@@ -114,6 +114,7 @@ export class SupplierService {
           select: {
             id: true,
             name: true,
+            sku: true,
             images: { take: 1, select: { url: true } },
           },
         },
@@ -124,6 +125,7 @@ export class SupplierService {
     return links.map((link) => ({
       id: link.product?.id,
       name: link.product?.name,
+      sku: link.product?.sku || "",
       images: link.product?.images || [],
     }));
   }

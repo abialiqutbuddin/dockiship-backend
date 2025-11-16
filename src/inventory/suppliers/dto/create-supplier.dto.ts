@@ -21,6 +21,10 @@ export class CreateSupplierDto {
   phone?: string;
 
   @IsOptional()
+  @IsString()
+  contacts?: string;
+
+  @IsOptional()
   @IsISO31661Alpha2()
   country?: string;
 
