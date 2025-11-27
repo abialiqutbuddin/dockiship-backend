@@ -1,17 +1,22 @@
-import { IsNotEmpty, IsOptional, IsString, IsISO31661Alpha2 } from 'class-validator';
+import {
+  IsISO31661Alpha2,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateWarehouseDto {
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  code!: string;
+  code?: string;
 
   @IsNotEmpty()
   @IsString()
   name!: string;
 
-  @IsOptional()
   @IsISO31661Alpha2()
-  country?: string;
+  @IsNotEmpty()
+  country!: string;
 
   @IsOptional()
   @IsString()
@@ -21,13 +26,13 @@ export class CreateWarehouseDto {
   @IsString()
   address2?: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
-  city?: string;
+  city!: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
-  state?: string;
+  state!: string;
 
   @IsOptional()
   @IsString()

@@ -88,32 +88,32 @@ export class ProductsService {
                                 (v as any).packagingQuantity ?? null,
                             );
                             return {
-                            sku: v.sku,
-                            sizeId: v.sizeId,
-                            sizeText: v.sizeText,
-                            colorText: (v as any).colorText,
-                            barcode: v.barcode,
-                            status: v.status ?? productData.status, // Inherit parent status
-                            condition: v.condition ?? productData.condition, // Inherit parent condition
-                            isDraft: v.isDraft ?? productData.isDraft, // Inherit
-                            publishedAt: v.publishedAt ?? productData.publishedAt, // Inherit
-                            weight: v.weight as any,
-                            weightUnit: v.weightUnit,
-                            length: v.length as any,
-                            width: v.width as any,
-                            height: v.height as any,
-                            dimensionUnit: v.dimensionUnit,
-                            attributes: v.attributes as any,
-                            // Add price from variant DTO
-                            retailPrice: v.retailPrice as any,
-                            retailCurrency: v.retailCurrency,
-                            originalPrice: v.originalPrice as any,
-                            originalCurrency: v.originalCurrency,
-                            lastPurchasePrice: (v as any).lastPurchasePrice as any,
-                            lastPurchaseCurr: (v as any).lastPurchaseCurr,
-                            packagingType: packaging.packagingType,
-                            packagingQuantity: packaging.packagingQuantity,
-                            // Stock fields default to 0
+                                sku: v.sku,
+                                sizeId: v.sizeId,
+                                sizeText: v.sizeText,
+                                colorText: (v as any).colorText,
+                                barcode: v.barcode,
+                                status: v.status ?? productData.status, // Inherit parent status
+                                condition: v.condition ?? productData.condition, // Inherit parent condition
+                                isDraft: v.isDraft ?? productData.isDraft, // Inherit
+                                publishedAt: v.publishedAt ?? productData.publishedAt, // Inherit
+                                weight: v.weight as any,
+                                weightUnit: v.weightUnit,
+                                length: v.length as any,
+                                width: v.width as any,
+                                height: v.height as any,
+                                dimensionUnit: v.dimensionUnit,
+                                attributes: v.attributes as any,
+                                // Add price from variant DTO
+                                retailPrice: v.retailPrice as any,
+                                retailCurrency: v.retailCurrency,
+                                originalPrice: v.originalPrice as any,
+                                originalCurrency: v.originalCurrency,
+                                lastPurchasePrice: (v as any).lastPurchasePrice as any,
+                                lastPurchaseCurr: (v as any).lastPurchaseCurr,
+                                packagingType: packaging.packagingType,
+                                packagingQuantity: packaging.packagingQuantity,
+                                // Stock fields default to 0
                             };
                         })
                         :   // CASE 2: No variants provided (Simple Product)
@@ -124,30 +124,30 @@ export class ProductsService {
                                 (productData as any).packagingQuantity ?? null,
                             );
                             return [{
-                            sku, // Use parent SKU for the single variant
-                            status: productData.status,
-                            condition: productData.condition,
-                            isDraft: productData.isDraft,
-                            publishedAt: productData.publishedAt,
-                            // Use parent-level data
-                            sizeText: (productData as any).sizeText,
-                            colorText: (productData as any).colorText,
-                            weight: productData.weight as any,
-                            weightUnit: productData.weightUnit,
-                            length: productData.length as any,
-                            width: productData.width as any,
-                            height: productData.height as any,
-                            dimensionUnit: productData.dimensionUnit,
-                            // Use parent-level price
-                            retailPrice: productData.retailPrice as any,
-                            retailCurrency: productData.retailCurrency,
-                            originalPrice: productData.originalPrice as any,
-                            originalCurrency: productData.originalCurrency,
-                            lastPurchasePrice: (productData as any).lastPurchasePrice as any,
-                            lastPurchaseCurr: (productData as any).lastPurchaseCurr,
-                            packagingType: packaging.packagingType,
-                            packagingQuantity: packaging.packagingQuantity,
-                            // Stock fields default to 0
+                                sku, // Use parent SKU for the single variant
+                                status: productData.status,
+                                condition: productData.condition,
+                                isDraft: productData.isDraft,
+                                publishedAt: productData.publishedAt,
+                                // Use parent-level data
+                                sizeText: (productData as any).sizeText,
+                                colorText: (productData as any).colorText,
+                                weight: productData.weight as any,
+                                weightUnit: productData.weightUnit,
+                                length: productData.length as any,
+                                width: productData.width as any,
+                                height: productData.height as any,
+                                dimensionUnit: productData.dimensionUnit,
+                                // Use parent-level price
+                                retailPrice: productData.retailPrice as any,
+                                retailCurrency: productData.retailCurrency,
+                                originalPrice: productData.originalPrice as any,
+                                originalCurrency: productData.originalCurrency,
+                                lastPurchasePrice: (productData as any).lastPurchasePrice as any,
+                                lastPurchaseCurr: (productData as any).lastPurchaseCurr,
+                                packagingType: packaging.packagingType,
+                                packagingQuantity: packaging.packagingQuantity,
+                                // Stock fields default to 0
                             }];
                         })(),
                 },
@@ -211,14 +211,17 @@ export class ProductsService {
     // src/products/products.service.ts
 
     async listProducts(tenantId: string, q: ListProductsQueryDto) {
-        const { page = 1, perPage = 20, search, status } = q;
+        const { page = 1, perPage = 25, search, status, supplierId } = q;
         const where: any = { tenantId };
         if (status) where.status = status;
+        if (supplierId) {
+            where.supplierLinks = { some: { supplierId } };
+        }
         if (search) {
             where.OR = [
-                { name: { contains: search, mode: 'insensitive' } },
-                { sku: { contains: search, mode: 'insensitive' } }, // Searches parent SKU
-                { brand: { contains: search, mode: 'insensitive' } },
+                { name: { contains: search } },
+                { sku: { contains: search } }, // Searches parent SKU
+                { brand: { contains: search } },
             ];
         }
 
@@ -240,6 +243,7 @@ export class ProductsService {
                             // Added to consistently determine simple vs variant (matches getProduct logic)
                             sizeId: true,
                             sizeText: true,
+                            colorText: true,
                             attributes: true,
                             packagingType: true,
                             packagingQuantity: true,
@@ -253,6 +257,13 @@ export class ProductsService {
 
         // ******* THIS IS THE NEW, IMPORTANT PART *******
         // We must transform the data for the admin table
+        const fmtMoney = (val: any) => {
+            if (val === null || val === undefined) return null;
+            const num = Number((val as any)?.toNumber ? (val as any).toNumber() : val);
+            if (!Number.isFinite(num)) return null;
+            return `$${num.toFixed(2)}`;
+        };
+
         const items = products.map((product) => {
             const { ProductVariant, ...parentProduct } = product;
             const variantCount = ProductVariant.length;
@@ -268,7 +279,8 @@ export class ProductsService {
                 const looksSimple = v.sku === (parentProduct as any).sku && !hasVariantSignals;
 
                 displayType = looksSimple ? 'Simple' : 'Variant (1)';
-                displayPrice = v?.retailPrice ? `$${v.retailPrice.toString()}` : 'N/A';
+                const money = fmtMoney(v?.retailPrice);
+                displayPrice = money ?? 'N/A';
                 displayStock = `${v?.stockOnHand || 0} in stock`;
 
             } else if (variantCount > 1) {
@@ -283,7 +295,7 @@ export class ProductsService {
                 if (nums.length > 0) {
                     const lo = Math.min(...nums);
                     const hi = Math.max(...nums);
-                    displayPrice = lo === hi ? `$${lo.toString()}` : `$${lo.toString()} - $${hi.toString()}`;
+                    displayPrice = lo === hi ? `$${lo.toFixed(2)}` : `$${lo.toFixed(2)} - $${hi.toFixed(2)}`;
                 }
 
                 // Calculate total stock
@@ -515,6 +527,18 @@ export class ProductsService {
                     );
                     update.packagingType = packaging.packagingType;
                     update.packagingQuantity = packaging.packagingQuantity;
+                }
+                if ((dto as any).retailPrice !== undefined) {
+                    update.retailPrice = (dto as any).retailPrice;
+                    if ((dto as any).retailCurrency !== undefined) update.retailCurrency = (dto as any).retailCurrency;
+                }
+                if ((dto as any).originalPrice !== undefined) {
+                    update.originalPrice = (dto as any).originalPrice;
+                    if ((dto as any).originalCurrency !== undefined) update.originalCurrency = (dto as any).originalCurrency;
+                }
+                if ((dto as any).lastPurchasePrice !== undefined) {
+                    update.lastPurchasePrice = (dto as any).lastPurchasePrice;
+                    if ((dto as any).lastPurchaseCurr !== undefined) update.lastPurchaseCurr = (dto as any).lastPurchaseCurr;
                 }
                 if (Object.keys(update).length) {
                     await tx.productVariant.update({ where: { id: onlyVariantId }, data: update });
@@ -894,57 +918,67 @@ export class ProductsService {
         return { ok: true };
     }
 
-    async listMarketplaceProviders(tenantId: string, q?: string) {
+    async listListingProductNames(tenantId: string, q?: string) {
+        // Query distinct productNames from ChannelListing
+        const results = await this.prisma.channelListing.findMany({
+            where: {
+                channel: { tenantId },
+                ...(q ? { productName: { contains: q } } : {}),
+                productName: { not: null },
+            },
+            distinct: ['productName'],
+            select: { productName: true },
+            orderBy: { productName: 'asc' },
+        });
+        return results.map(r => ({ provider: r.productName })); // Keep 'provider' key for frontend compatibility if needed, or change to productName
+    }
+
+    async listMarketplaceChannels(tenantId: string, q?: string) {
         return this.prisma.tenantChannel.findMany({
             where: {
                 tenantId,
-                ...(q ? { provider: { contains: q } } : {}),
+                ...(q ? { marketplace: { contains: q } } : {}),
             },
-            distinct: ['provider'],
-            select: { provider: true },
-            orderBy: { provider: 'asc' },
+            select: { id: true, marketplace: true },
+            orderBy: { marketplace: 'asc' },
         });
     }
 
-    async listMarketplaceChannels(tenantId: string, provider?: string, q?: string) {
-        const hasProvider = !!provider && provider.trim().length > 0;
-        return this.prisma.tenantChannel.findMany({
-            where: {
-                tenantId,
-                ...(hasProvider ? { provider: provider!.trim() } : {}),
-                ...(q ? { name: { contains: q } } : {}),
-            },
-            select: { id: true, name: true, provider: true },
-            orderBy: { name: 'asc' },
-        });
-    }
+    async createMarketplaceChannel(tenantId: string, dto: { marketplace: string; accountId?: string; storeUrl?: string }) {
+        const marketplace = dto.marketplace.trim();
+        if (!marketplace) throw new BadRequestException('marketplace name is required');
 
-    async createMarketplaceChannel(tenantId: string, dto: { provider?: string; productName?: string; name: string; accountId?: string; storeUrl?: string }) {
-        const provider = (dto.productName ?? dto.provider ?? '').trim();
-        const name = dto.name.trim();
-        if (!provider || !name) throw new BadRequestException('provider and name are required');
-
-        // unique constraint: @@unique([tenantId, provider, name])
+        // unique constraint: @@unique([tenantId, provider, marketplace])
+        // We use provider=null for new decoupled channels
         try {
             return await this.prisma.tenantChannel.create({
                 data: {
                     tenantId,
-                    provider,
-                    name,
+                    marketplace,
+                    provider: null, // Explicitly null
                     accountId: dto.accountId,
                     storeUrl: dto.storeUrl,
                     isActive: true,
                 },
-                select: { id: true, provider: true, name: true },
+                select: { id: true, marketplace: true },
             });
         } catch (e: any) {
             if (e?.code === 'P2002') {
                 // already exists → return existing
                 const existing = await this.prisma.tenantChannel.findFirst({
-                    where: { tenantId, provider, name },
-                    select: { id: true, provider: true, name: true },
+                    where: { tenantId, marketplace, provider: null },
+                    select: { id: true, marketplace: true },
                 });
                 if (existing) return existing;
+
+                // Fallback: if it exists with a provider (legacy), return that?
+                // But we want to encourage provider=null.
+                // If the user typed "Amazon", and we have "Amazon" (provider=null), we return it.
+                // If we have "Amazon" (provider="ProdA"), we don't return it here because of `provider: null` check above.
+                // But `create` failed on unique constraint?
+                // If unique is [tenantId, provider, marketplace], then [T1, null, Amazon] is distinct from [T1, ProdA, Amazon].
+                // So it shouldn't fail unless [T1, null, Amazon] exists.
+                // So the logic above is correct.
             }
             throw e;
         }
@@ -985,17 +1019,18 @@ export class ProductsService {
         };
     }
 
-    async addProductListing(tenantId: string, productId: string, data: { provider?: string; productName?: string; name: string; externalSku?: string; units: number }) {
+    async addProductListing(tenantId: string, productId: string, data: { productName: string; marketplace: string; externalSku?: string; units: number }) {
         const product = await this.prisma.product.findFirst({ where: { id: productId, tenantId }, select: { id: true } });
         if (!product) throw new NotFoundException('Product not found');
 
-        const channel = await this.createMarketplaceChannel(tenantId, { provider: data.provider, productName: data.productName, name: data.name });
+        const channel = await this.createMarketplaceChannel(tenantId, { marketplace: data.marketplace });
 
         try {
             const externalSku = data.externalSku && data.externalSku.trim() ? data.externalSku.trim() : null;
             return await this.prisma.channelListing.create({
                 data: {
                     tenantChannelId: channel.id,
+                    productName: data.productName, // Save product name
                     productId,                 // parent product
                     externalSku: externalSku ?? undefined,
                     units: data.units,
@@ -1010,20 +1045,21 @@ export class ProductsService {
         }
     }
 
-    async addVariantListing(tenantId: string, productId: string, data: { provider?: string; productName?: string; name: string; externalSku?: string; units: number; variantId: string }) {
+    async addVariantListing(tenantId: string, productId: string, data: { productName: string; marketplace: string; externalSku?: string; units: number; variantId: string }) {
         const variant = await this.prisma.productVariant.findFirst({
             where: { id: data.variantId, product: { id: productId, tenantId } },
             select: { id: true, sku: true, productId: true },
         });
         if (!variant) throw new NotFoundException('Variant not found');
 
-        const channel = await this.createMarketplaceChannel(tenantId, { provider: data.provider, productName: data.productName, name: data.name });
+        const channel = await this.createMarketplaceChannel(tenantId, { marketplace: data.marketplace });
 
         try {
             const externalSku = data.externalSku && data.externalSku.trim() ? data.externalSku.trim() : variant.sku;
             return await this.prisma.channelListing.create({
                 data: {
                     tenantChannelId: channel.id,
+                    productName: data.productName, // Save product name
                     productVariantId: variant.id, // variant listing
                     externalSku,
                     units: data.units,
@@ -1036,5 +1072,24 @@ export class ProductsService {
             }
             throw e;
         }
+    }
+
+    async deleteListing(tenantId: string, productId: string, listingId: string) {
+        if (!listingId) throw new BadRequestException('Missing listingId');
+        const listing = await this.prisma.channelListing.findFirst({
+            where: {
+                id: listingId,
+                OR: [
+                    { productId },
+                    { productVariant: { productId } },
+                ],
+                channel: { tenantId },
+            },
+            select: { id: true },
+        });
+        if (!listing) throw new NotFoundException('Marketplace listing not found');
+
+        await this.prisma.channelListing.delete({ where: { id: listingId } });
+        return { ok: true };
     }
 }

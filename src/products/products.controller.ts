@@ -17,7 +17,7 @@ import { diskStorage } from 'multer';
 import type { Request } from 'express';
 import { join, extname } from 'path';
 import { promises as fs } from 'fs';
-import { CreateChannelDto, CreateListingForProductDto, CreateListingForVariantDto, ListChannelQueryDto, ListProviderQueryDto } from './dto/marketplace.dto';
+import { CreateChannelDto, CreateListingForProductDto, CreateListingForVariantDto, ListChannelQueryDto, ListProductNameQueryDto } from './dto/marketplace.dto';
 
 @Controller('products')
 @UseGuards(TenantGuard, JwtAuthGuard, RbacGuard)
@@ -196,25 +196,25 @@ export class ProductsController {
 
 
   ///MARKET PLACE CHANNELS AND LISTINGS -------------------------------------
-  // Providers (searchable)
-  @Get('/marketplaces/providers')
+  // Product Names (searchable from listings)
+  @Get('/marketplaces/product-names')
   @Permissions('inventory.product.manage')
-  getMarketplaceProviders(@Req() req: any, @Query() q: ListProviderQueryDto) {
-    return this.products.listMarketplaceProviders(req.tenantId, q?.q);
+  getListingProductNames(@Req() req: any, @Query() q: ListProductNameQueryDto) {
+    return this.products.listListingProductNames(req.tenantId, q?.q);
   }
 
-  // Channels by provider (searchable)
+  // Channels (marketplaces)
   @Get('/marketplaces/channels')
   @Permissions('inventory.product.manage')
   getMarketplaceChannels(@Req() req: any, @Query() q: ListChannelQueryDto) {
-    return this.products.listMarketplaceChannels(req.tenantId, (q as any).productName ?? (q as any).provider, q?.q);
+    return this.products.listMarketplaceChannels(req.tenantId, q?.q);
   }
 
-  // Create channel (provider + name). Idempotent: returns existing if unique hit.
+  // Create channel (marketplace). Idempotent: returns existing if unique hit.
   @Post('/marketplaces/channels')
   @Permissions('inventory.product.manage')
   createMarketplaceChannel(@Req() req: any, @Body() dto: CreateChannelDto) {
-    return this.products.createMarketplaceChannel(req.tenantId, dto as any);
+    return this.products.createMarketplaceChannel(req.tenantId, dto);
   }
 
   // List all listings for a product (parent + per-variant)
@@ -247,6 +247,16 @@ export class ProductsController {
     @Body() dto: CreateListingForVariantDto,
   ) {
     return this.products.addVariantListing(req.tenantId, productId, dto);
+  }
+
+  @Delete(':productId/marketplaces/listings/:listingId')
+  @Permissions('inventory.product.manage')
+  deleteMarketplaceListing(
+    @Req() req: any,
+    @Param('productId') productId: string,
+    @Param('listingId') listingId: string,
+  ) {
+    return this.products.deleteListing(req.tenantId, productId, listingId);
   }
 
 }
