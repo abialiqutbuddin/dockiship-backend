@@ -192,6 +192,18 @@ export class PurchaseOrderService {
           currency: true,
           supplier: { select: { id: true, companyName: true, email: true } },
           warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
+          items: {
+            select: {
+              id: true,
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  images: true,
+                },
+              },
+            },
+          },
         },
       }),
       this.prisma.purchaseOrder.count({ where }),
@@ -234,6 +246,7 @@ export class PurchaseOrderService {
             productVar: { select: { id: true, sku: true, sizeText: true, colorText: true, stockOnHand: true } },
           },
         },
+        transactions: { orderBy: { date: 'desc' } },
       },
     });
     if (!po) throw new NotFoundException('Purchase order not found');
@@ -462,11 +475,57 @@ export class PurchaseOrderService {
           items: true,
           supplier: { select: { id: true, companyName: true } },
           warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
+          transactions: { orderBy: { date: 'desc' } },
         },
       });
     });
 
     return updated;
+  }
+
+  async addPayment(tenantId: string, poId: string, dto: { amount: number; date?: string; notes?: string; method?: string; reference?: string }) {
+    await this.ensureExists(tenantId, poId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const po = await tx.purchaseOrder.findUnique({ where: { id: poId } });
+      if (!po) throw new NotFoundException('Purchase order not found');
+
+      const totalAmount = Number(po.totalAmount) || 0;
+      const currentPaid = Number(po.amountPaid) || 0;
+      const newPayment = Number(dto.amount);
+
+      if (currentPaid + newPayment > totalAmount) {
+        throw new BadRequestException(`Total paid amount cannot exceed total amount (${totalAmount})`);
+      }
+
+      // Create transaction
+      const txn = await tx.purchaseOrderTransaction.create({
+        data: {
+          purchaseOrderId: poId,
+          amount: newPayment,
+          date: dto.date ? new Date(dto.date) : new Date(),
+          notes: dto.notes,
+          method: dto.method,
+          reference: dto.reference,
+        },
+      });
+
+      // Update PO amountPaid
+      const updatedPo = await tx.purchaseOrder.update({
+        where: { id: poId },
+        data: {
+          amountPaid: { increment: newPayment },
+        },
+        include: {
+          items: true,
+          supplier: { select: { id: true, companyName: true } },
+          warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
+          transactions: { orderBy: { date: 'desc' } },
+        },
+      });
+
+      return updatedPo;
+    });
   }
 
   private async ensureExists(tenantId: string, id: string) {

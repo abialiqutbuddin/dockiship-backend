@@ -71,6 +71,7 @@ export class CreateProductDto {
   @IsOptional() lastPurchaseCurr?: string | null;
 
   // relations: primary supplier removed; use ProductSupplier join links
+  @IsOptional() @IsString() @IsUUID() supplierId?: string;
 
   @IsOptional() @IsEnum(PackagingType) packagingType?: PackagingType;
   @IsOptional() @IsInt() @Min(1) packagingQuantity?: number;

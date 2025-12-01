@@ -64,7 +64,7 @@ export class ProductsService {
             }
         }
 
-        return this.prisma.product.create({
+        const product = await this.prisma.product.create({
             data: {
                 tenantId,
                 sku,
@@ -156,6 +156,19 @@ export class ProductsService {
             },
             include: { ProductVariant: true },
         });
+
+        if ((dto as any).supplierId) {
+            await this.prisma.productSupplier.create({
+                data: {
+                    tenantId,
+                    productId: product.id,
+                    supplierId: (dto as any).supplierId,
+                    preferred: true,
+                },
+            });
+        }
+
+        return product;
     }
     // async createProduct(tenantId: string, dto: CreateProductDto) {
     //     const exists = await this.prisma.product.findFirst({ where: { tenantId, sku: dto.sku } });

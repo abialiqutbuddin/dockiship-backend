@@ -20,6 +20,7 @@ import { UpdatePurchaseOrderStatusDto } from './dto/update-purchase-order-status
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 import { ReceivePurchaseOrderItemsDto } from './dto/receive-purchase-order-items.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
+import { AddPaymentDto } from './dto/add-payment.dto';
 
 @Controller('purchase-orders')
 @UseGuards(TenantGuard, JwtAuthGuard, RbacGuard)
@@ -109,5 +110,14 @@ export class PurchaseOrderController {
     @Body() dto: UpdatePaymentDto,
   ) {
     return this.purchaseOrders.updatePayment(tenantId, id, dto.amountPaid);
+  }
+  @Post(':id/payments')
+  @Permissions('purchases.po.update')
+  async addPayment(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Body() dto: AddPaymentDto,
+  ) {
+    return this.purchaseOrders.addPayment(tenantId, id, dto);
   }
 }
