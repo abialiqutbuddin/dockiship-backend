@@ -108,6 +108,7 @@ export class PurchaseOrderService {
         shippingCost,
         shippingTax,
         totalAmount,
+        amountPaid: dto.amountPaid || 0,
         poNumber,
         createdByUserId: userId || undefined,
         items: {
@@ -117,37 +118,108 @@ export class PurchaseOrderService {
       include: {
         items: true,
         supplier: { select: { id: true, companyName: true } },
-        warehouse: { select: { id: true, name: true, code: true } },
+        warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
       },
     });
 
     return created;
   }
 
-  async list(tenantId: string, status?: string, supplierId?: string) {
+  async list(
+    tenantId: string,
+    params: {
+      page?: number;
+      perPage?: number;
+      search?: string;
+      status?: string;
+      supplierId?: string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    },
+  ) {
+    const {
+      page = 1,
+      perPage = 25,
+      search,
+      status,
+      supplierId,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = params;
+
     const where: Prisma.PurchaseOrderWhereInput = { tenantId };
+
     if (status) {
       where.status = status as POStatus;
     }
     if (supplierId) {
       where.supplierId = supplierId;
     }
+    if (search) {
+      where.OR = [
+        { poNumber: { contains: search } },
+        { supplier: { companyName: { contains: search } } },
+        { warehouse: { name: { contains: search } } },
+      ];
+    }
 
-    return this.prisma.purchaseOrder.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        poNumber: true,
-        createdAt: true,
-        expectedDeliveryDate: true,
-        status: true,
-        totalAmount: true,
-        currency: true,
-        supplier: { select: { id: true, companyName: true } },
-        warehouse: { select: { id: true, name: true, code: true } },
+    const orderBy: Prisma.PurchaseOrderOrderByWithRelationInput = {};
+    if (sortBy === 'supplier') {
+      orderBy.supplier = { companyName: sortOrder };
+    } else if (sortBy === 'warehouse') {
+      orderBy.warehouse = { name: sortOrder };
+    } else if (sortBy) {
+      // @ts-ignore
+      orderBy[sortBy] = sortOrder;
+    } else {
+      orderBy.createdAt = 'desc';
+    }
+
+    const [items, total, statusCounts] = await this.prisma.$transaction([
+      this.prisma.purchaseOrder.findMany({
+        where,
+        orderBy,
+        skip: (Number(page) - 1) * Number(perPage),
+        take: Number(perPage),
+        select: {
+          id: true,
+          poNumber: true,
+          createdAt: true,
+          expectedDeliveryDate: true,
+          status: true,
+          totalAmount: true,
+          amountPaid: true,
+          currency: true,
+          supplier: { select: { id: true, companyName: true, email: true } },
+          warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
+        },
+      }),
+      this.prisma.purchaseOrder.count({ where }),
+      this.prisma.purchaseOrder.groupBy({
+        by: ['status'],
+        where: { tenantId },
+        _count: { status: true },
+        orderBy: { status: 'asc' },
+      }),
+    ]);
+
+    const counts = statusCounts.reduce((acc, curr) => {
+      // Cast to any because Prisma types for groupBy _count can be tricky with strict checks
+      const c = curr._count as any;
+      acc[curr.status] = c?.status ?? 0;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      data: items,
+      meta: {
+        total,
+        page: Number(page),
+        perPage: Number(perPage),
+        totalPages: Math.ceil(total / Number(perPage)),
       },
-    });
+      counts,
+    };
   }
 
   async findOne(tenantId: string, id: string) {
@@ -155,10 +227,10 @@ export class PurchaseOrderService {
       where: { id, tenantId },
       include: {
         supplier: { select: { id: true, companyName: true, email: true } },
-        warehouse: { select: { id: true, name: true, code: true } },
+        warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
         items: {
           include: {
-            product: { select: { id: true, name: true, sku: true } },
+            product: { select: { id: true, name: true, sku: true, images: true } },
             productVar: { select: { id: true, sku: true, sizeText: true, colorText: true, stockOnHand: true } },
           },
         },
@@ -168,13 +240,13 @@ export class PurchaseOrderService {
     return po;
   }
 
-  async updateStatus(tenantId: string, id: string, status: POStatus) {
+  async updateStatus(tenantId: string, id: string, status: POStatus, notes?: string) {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, tenantId },
       include: {
         items: true,
         supplier: { select: { id: true, companyName: true } },
-        warehouse: { select: { id: true, name: true, code: true } },
+        warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
       },
     });
 
@@ -197,7 +269,7 @@ export class PurchaseOrderService {
           include: {
             items: true,
             supplier: { select: { id: true, companyName: true } },
-            warehouse: { select: { id: true, name: true, code: true } },
+            warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
           },
         });
 
@@ -255,11 +327,11 @@ export class PurchaseOrderService {
     // Other status transitions allowed (except from received)
     return this.prisma.purchaseOrder.update({
       where: { id },
-      data: { status },
+      data: { status, notes: notes !== undefined ? notes : undefined },
       include: {
         items: true,
         supplier: { select: { id: true, companyName: true } },
-        warehouse: { select: { id: true, name: true, code: true } },
+        warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
       },
     });
   }
@@ -319,6 +391,24 @@ export class PurchaseOrderService {
                 lastPurchaseCurr: poItem.currency || po.currency || undefined,
               },
             });
+
+            // Create inventory transaction to track stock movement by warehouse
+            await tx.inventoryTxn.create({
+              data: {
+                tenantId,
+                productId: poItem.productId,
+                productVariantId: variantId,
+                warehouseId: po.warehouseId,
+                qtyDelta: receiveItem.receivedQty,
+                state: 'ON_HAND',
+                type: 'PO_RECEIVED',
+                reason: `Received from PO ${po.poNumber}`,
+                refType: 'PO',
+                refId: id,
+                createdByUserId: null, // Can be populated if you have userId in context
+              },
+            });
+
             // Update parent product snapshot
             await tx.product.update({
               where: { id: poItem.productId },
@@ -354,12 +444,24 @@ export class PurchaseOrderService {
         });
       }
 
+      if (dto.amountPaid !== undefined) {
+        const currentPo = await tx.purchaseOrder.findUnique({ where: { id } });
+        const totalAmount = Number(currentPo?.totalAmount) || 0;
+        if (dto.amountPaid > totalAmount) {
+          throw new BadRequestException(`Amount paid cannot exceed total amount (${totalAmount})`);
+        }
+        await tx.purchaseOrder.update({
+          where: { id },
+          data: { amountPaid: dto.amountPaid },
+        });
+      }
+
       return tx.purchaseOrder.findUnique({
         where: { id },
         include: {
           items: true,
           supplier: { select: { id: true, companyName: true } },
-          warehouse: { select: { id: true, name: true, code: true } },
+          warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
         },
       });
     });
@@ -496,6 +598,7 @@ export class PurchaseOrderService {
           shippingCost,
           shippingTax,
           totalAmount,
+          amountPaid: dto.amountPaid || 0,
           status: dto.status || undefined,
           updatedAt: new Date(),
           items: {
@@ -512,7 +615,7 @@ export class PurchaseOrderService {
             },
           },
           supplier: { select: { id: true, companyName: true } },
-          warehouse: { select: { id: true, name: true, code: true } },
+          warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
         },
       });
 
@@ -520,5 +623,27 @@ export class PurchaseOrderService {
     });
 
     return updated;
+  }
+
+  async updatePayment(tenantId: string, id: string, amountPaid: number) {
+    const po = await this.prisma.purchaseOrder.findFirst({
+      where: { id, tenantId },
+    });
+    if (!po) throw new NotFoundException('Purchase order not found');
+
+    const totalAmount = Number(po.totalAmount) || 0;
+    if (amountPaid > totalAmount) {
+      throw new BadRequestException(`Amount paid cannot exceed total amount (${totalAmount})`);
+    }
+
+    return this.prisma.purchaseOrder.update({
+      where: { id },
+      data: { amountPaid },
+      include: {
+        items: true,
+        supplier: { select: { id: true, companyName: true } },
+        warehouse: { select: { id: true, name: true, code: true, city: true, address1: true, address2: true, state: true, zipCode: true, country: true } },
+      },
+    });
   }
 }

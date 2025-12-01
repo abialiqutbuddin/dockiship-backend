@@ -72,6 +72,7 @@ export class ProductsService {
                 brand: productData.brand ?? null,
                 status: productData.status,
                 originCountry: productData.originCountry ?? null,
+                tag: (productData as any).tag ?? null,
                 isDraft: productData.isDraft ?? false,
                 publishedAt: productData.publishedAt ?? null,
                 // initial purchasing snapshot if provided
@@ -132,6 +133,7 @@ export class ProductsService {
                                 // Use parent-level data
                                 sizeText: (productData as any).sizeText,
                                 colorText: (productData as any).colorText,
+                                barcode: (productData as any).barcode,
                                 weight: productData.weight as any,
                                 weightUnit: productData.weightUnit,
                                 length: productData.length as any,
@@ -213,7 +215,14 @@ export class ProductsService {
     async listProducts(tenantId: string, q: ListProductsQueryDto) {
         const { page = 1, perPage = 25, search, status, supplierId } = q;
         const where: any = { tenantId };
-        if (status) where.status = status;
+
+        // Default to hiding archived if no status filter provided
+        if (status) {
+            where.status = status;
+        } else {
+            where.status = { not: 'archived' };
+        }
+
         if (supplierId) {
             where.supplierLinks = { some: { supplierId } };
         }
@@ -499,6 +508,8 @@ export class ProductsService {
             brand: dto.brand,
             status: dto.status,
             originCountry: dto.originCountry,
+            tag: (dto as any).tag,
+            condition: dto.condition,
             isDraft: dto.isDraft,
             publishedAt: dto.publishedAt,
             lastPurchasePrice: (dto as any).lastPurchasePrice ?? undefined,
@@ -518,6 +529,7 @@ export class ProductsService {
                 if ((dto as any).sku) update.sku = (dto as any).sku;
                 if ((dto as any).sizeText !== undefined) update.sizeText = (dto as any).sizeText;
                 if ((dto as any).colorText !== undefined) update.colorText = (dto as any).colorText;
+                if ((dto as any).barcode !== undefined) update.barcode = (dto as any).barcode;
                 if ((dto as any).packagingType !== undefined || (dto as any).packagingQuantity !== undefined) {
                     const packaging = this.resolvePackaging(
                         ((dto as any).packagingType !== undefined ? (dto as any).packagingType : onlyVariant?.packagingType) ?? null,
@@ -536,6 +548,14 @@ export class ProductsService {
                     update.originalPrice = (dto as any).originalPrice;
                     if ((dto as any).originalCurrency !== undefined) update.originalCurrency = (dto as any).originalCurrency;
                 }
+                if ((dto as any).condition !== undefined) update.condition = (dto as any).condition;
+                if ((dto as any).weight !== undefined) update.weight = (dto as any).weight;
+                if ((dto as any).weightUnit !== undefined) update.weightUnit = (dto as any).weightUnit;
+                if ((dto as any).length !== undefined) update.length = (dto as any).length;
+                if ((dto as any).width !== undefined) update.width = (dto as any).width;
+                if ((dto as any).height !== undefined) update.height = (dto as any).height;
+                if ((dto as any).dimensionUnit !== undefined) update.dimensionUnit = (dto as any).dimensionUnit;
+
                 if ((dto as any).lastPurchasePrice !== undefined) {
                     update.lastPurchasePrice = (dto as any).lastPurchasePrice;
                     if ((dto as any).lastPurchaseCurr !== undefined) update.lastPurchaseCurr = (dto as any).lastPurchaseCurr;
@@ -582,12 +602,50 @@ export class ProductsService {
     //     });
     // }
 
-    // DELETE PRODUCT (hard)
+    // DELETE PRODUCT (soft if dependencies, hard otherwise)
     async deleteProduct(tenantId: string, productId: string) {
-        const found = await this.prisma.product.findFirst({ where: { id: productId, tenantId } });
+        const found = await this.prisma.product.findFirst({
+            where: { id: productId, tenantId },
+            include: { ProductVariant: true }
+        });
         if (!found) throw new NotFoundException('Product not found');
-        await this.prisma.product.delete({ where: { id: productId } });
-        return { ok: true };
+
+        // Check for dependencies
+        // 1. PO Items (linked to product or any variant)
+        const poItemsCount = await this.prisma.purchaseOrderItem.count({
+            where: {
+                OR: [
+                    { productId: productId },
+                    { productVariantId: { in: found.ProductVariant.map(v => v.id) } }
+                ]
+            }
+        });
+
+        // 2. Inventory Transactions (linked to product or any variant)
+        const txnCount = await this.prisma.inventoryTxn.count({
+            where: {
+                OR: [
+                    { productId: productId },
+                    { productVariantId: { in: found.ProductVariant.map(v => v.id) } }
+                ]
+            }
+        });
+
+        // 3. Stock on hand (check if any variant has stock)
+        const hasStock = found.ProductVariant.some(v => v.stockOnHand > 0);
+
+        if (poItemsCount > 0 || txnCount > 0 || hasStock) {
+            // Soft delete (archive)
+            await this.prisma.product.update({
+                where: { id: productId },
+                data: { status: 'archived' }
+            });
+            return { ok: true, action: 'archived' };
+        } else {
+            // Hard delete
+            await this.prisma.product.delete({ where: { id: productId } });
+            return { ok: true, action: 'deleted' };
+        }
     }
 
     // PUBLISH / UNPUBLISH
@@ -664,6 +722,7 @@ export class ProductsService {
                 sku: dto.sku,
                 sizeId: dto.sizeId,
                 sizeText: dto.sizeText,
+                colorText: (dto as any).colorText,
                 barcode: dto.barcode,
                 status: dto.status,
                 condition: dto.condition,

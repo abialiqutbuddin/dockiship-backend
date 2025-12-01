@@ -96,4 +96,10 @@ export class CreatePurchaseOrderDto {
   @IsOptional()
   @IsEnum(POStatus)
   status?: POStatus;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amountPaid?: number;
 }

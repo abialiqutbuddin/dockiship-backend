@@ -5,7 +5,7 @@ import { UpdateSupplierDto } from './dto/update-supplier.dto';
 
 @Injectable()
 export class SupplierService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(tenantId: string, dto: CreateSupplierDto) {
     const exists = await this.prisma.supplier.findFirst({
@@ -87,7 +87,7 @@ export class SupplierService {
     });
   }
 
-   /** List products linked to a supplier (with small projection) */
+  /** List products linked to a supplier (with small projection) */
   async listProducts(tenantId: string, supplierId: string, q?: string) {
     const supplier = await this.prisma.supplier.findFirst({
       where: { id: supplierId, tenantId, isActive: true },
@@ -101,11 +101,11 @@ export class SupplierService {
         supplierId,
         product: q
           ? {
-              OR: [
-                { name: { contains: q } },
-                { sku: { contains: q } },
-              ],
-            }
+            OR: [
+              { name: { contains: q } },
+              { sku: { contains: q } },
+            ],
+          }
           : undefined,
       },
       orderBy: { product: { createdAt: 'desc' } },
@@ -116,18 +116,24 @@ export class SupplierService {
             name: true,
             sku: true,
             images: { take: 1, select: { url: true } },
+            ProductVariant: { select: { stockOnHand: true } },
           },
         },
       },
     });
 
     // Normalize response to array of product-like items (as frontend expects)
-    return links.map((link) => ({
-      id: link.product?.id,
-      name: link.product?.name,
-      sku: link.product?.sku || "",
-      images: link.product?.images || [],
-    }));
+    return links.map((link) => {
+      const variants = link.product?.ProductVariant || [];
+      const totalStock = variants.reduce((acc, v) => acc + (v.stockOnHand || 0), 0);
+      return {
+        id: link.product?.id,
+        name: link.product?.name,
+        sku: link.product?.sku || "",
+        stock: totalStock,
+        images: link.product?.images || [],
+      };
+    });
   }
 
   /** Unlink product.supplierId (safe for tenant) */

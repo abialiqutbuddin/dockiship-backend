@@ -19,6 +19,7 @@ import { PurchaseOrderService } from './purchase-order.service';
 import { UpdatePurchaseOrderStatusDto } from './dto/update-purchase-order-status.dto';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 import { ReceivePurchaseOrderItemsDto } from './dto/receive-purchase-order-items.dto';
+import { UpdatePaymentDto } from './dto/update-payment.dto';
 
 @Controller('purchase-orders')
 @UseGuards(TenantGuard, JwtAuthGuard, RbacGuard)
@@ -40,10 +41,23 @@ export class PurchaseOrderController {
   @Permissions('purchases.po.read', 'purchases.po.create')
   async list(
     @TenantId() tenantId: string,
+    @Query('page') page?: number,
+    @Query('perPage') perPage?: number,
+    @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('supplierId') supplierId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
-    return this.purchaseOrders.list(tenantId, status, supplierId);
+    return this.purchaseOrders.list(tenantId, {
+      page,
+      perPage,
+      search,
+      status,
+      supplierId,
+      sortBy,
+      sortOrder,
+    });
   }
 
   @Get(':id')
@@ -62,7 +76,7 @@ export class PurchaseOrderController {
     @Param('id') id: string,
     @Body() dto: UpdatePurchaseOrderStatusDto,
   ) {
-    return this.purchaseOrders.updateStatus(tenantId, id, dto.status);
+    return this.purchaseOrders.updateStatus(tenantId, id, dto.status, dto.notes);
   }
 
   @Post(':id/receive')
@@ -85,5 +99,15 @@ export class PurchaseOrderController {
   ) {
     const userId = req?.user?.sub ?? null;
     return this.purchaseOrders.update(tenantId, userId, id, dto);
+  }
+
+  @Patch(':id/payment')
+  @Permissions('purchases.po.update')
+  async updatePayment(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdatePaymentDto,
+  ) {
+    return this.purchaseOrders.updatePayment(tenantId, id, dto.amountPaid);
   }
 }
