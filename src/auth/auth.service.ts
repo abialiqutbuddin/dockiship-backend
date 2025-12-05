@@ -304,7 +304,7 @@ export class AuthService {
             { expiresIn: '15m' }
         );
 
-        const base = 'http://203.215.170.100';
+        const base = process.env.APP_URL || 'http://203.215.170.100';
         const resetLink =
             tenantHint
                 ? `${base}/reset-password?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(tenantHint)}`
