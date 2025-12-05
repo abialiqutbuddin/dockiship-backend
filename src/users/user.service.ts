@@ -139,7 +139,7 @@ export class UserService {
 
         // Email: everyone gets the same "Accept invitation" link
         const appName = process.env.APP_NAME || 'DockiShip';
-        const base = 'http://203.215.170.100'; // keep your base
+        const base = process.env.APP_URL || 'http://203.215.170.100'; // keep your base
 
         const acceptLink = `${base}/invite/accept?token=${encodeURIComponent(inviteToken)}`;
 
@@ -305,7 +305,7 @@ export class UserService {
 
         // 4) Email
         const appName = process.env.APP_NAME || 'DockiShip';
-        const base = 'http://203.215.170.100';
+        const base = process.env.APP_URL || 'http://203.215.170.100';
 
         if (isNewUser) {
             // New user → send password setup link
