@@ -141,6 +141,9 @@ export class ProductsController {
   @Post(':productId/images')
   @Permissions('inventory.product.manage')
   @UseInterceptors(FilesInterceptor('images', 10, {
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB per file
+    },
     storage: diskStorage({
       destination: (
         req: Request,
