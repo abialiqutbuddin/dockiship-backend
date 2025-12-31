@@ -72,7 +72,7 @@ export class ProductsService {
                 brand: productData.brand ?? null,
                 status: productData.status,
                 originCountry: productData.originCountry ?? null,
-                tag: (productData as any).tag ?? null,
+                category: (productData as any).category ?? null,
                 isDraft: productData.isDraft ?? false,
                 publishedAt: productData.publishedAt ?? null,
                 // initial purchasing snapshot if provided
@@ -521,7 +521,7 @@ export class ProductsService {
             brand: dto.brand,
             status: dto.status,
             originCountry: dto.originCountry,
-            tag: (dto as any).tag,
+            category: (dto as any).category,
             condition: dto.condition,
             isDraft: dto.isDraft,
             publishedAt: dto.publishedAt,
@@ -936,6 +936,32 @@ export class ProductsService {
         if (!variant) throw new NotFoundException('Variant not found');
         await this.prisma.productVariant.delete({ where: { id: variantId } });
         return { ok: true };
+    }
+
+    // CATEGORY HELPERS ---------------------------
+    async listCategories(tenantId: string, search?: string) {
+        return this.prisma.category.findMany({
+            where: {
+                tenantId,
+                ...(search ? { name: { contains: search } } : {}),
+            },
+            orderBy: { name: 'asc' },
+        });
+    }
+
+    async createCategory(tenantId: string, name: string) {
+        const normalized = name.trim();
+        if (!normalized) throw new BadRequestException('Category name required');
+
+        // check exists
+        const exists = await this.prisma.category.findFirst({
+            where: { tenantId, name: normalized },
+        });
+        if (exists) return exists;
+
+        return this.prisma.category.create({
+            data: { tenantId, name: normalized },
+        });
     }
 
     // ENUM / SIZE HELPERS ---------------------------

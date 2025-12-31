@@ -141,6 +141,7 @@ model Tenant {
   ProductSupplier ProductSupplier[]
   PurchaseOrder   PurchaseOrder[]
   InventoryTxn    InventoryTxn[]
+  Category        Category[]
   Size            Size[]
 
   @@index([slug])
@@ -362,7 +363,7 @@ model Product {
   brand         String?
   status        ProductStatus    @default(active)
   originCountry String?          @db.VarChar(2)
-  tag           String?
+  category    String?
   condition     ProductCondition?
 
   isDraft     Boolean   @default(false)
@@ -582,6 +583,18 @@ model InventoryTxn {
   @@index([state])
   @@index([type])
   @@index([productVariantId])
+}
+
+// A tenant-defined category catalog
+model Category {
+  id       String  @id @default(uuid())
+  tenantId String
+  name     String
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([tenantId, name], name: "uq_category_name_per_tenant")
+  @@index([tenantId])
 }
 
 // A tenant-defined size catalog (optional but handy for ordering and reuse)

@@ -41,7 +41,7 @@ export class CreateProductDto {
   @IsOptional() @IsString() brand?: string | null;
   @IsOptional() @IsEnum(ProductStatus) status?: ProductStatus;
   @IsOptional() originCountry?: string | null;
-  @IsOptional() @IsString() tag?: string | null;
+  @IsOptional() @IsString() category?: string | null;
   @IsOptional() @IsEnum(ProductCondition) condition?: ProductCondition;
   // Simple product helpers (applied to default variant when no variants array provided)
   @IsOptional() @IsString() sizeText?: string;

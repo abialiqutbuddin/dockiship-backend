@@ -105,6 +105,19 @@ export class ProductsController {
     return this.products.removeVariant(req.tenantId, productId, variantId);
   }
 
+  // CATEGORIES --------------------------------
+  @Get('/meta/categories')
+  @Permissions('inventory.product.read', 'inventory.product.manage')
+  listCategories(@Req() req: any, @Query('search') search?: string) {
+    return this.products.listCategories(req.tenantId, search);
+  }
+
+  @Post('/meta/categories')
+  @Permissions('inventory.product.manage')
+  createCategory(@Req() req: any, @Body('name') name: string) {
+    return this.products.createCategory(req.tenantId, name);
+  }
+
   // ENUMS / SIZES --------------------------------
   @Get('/meta/enums')
   @Permissions('inventory.product.read', 'inventory.product.manage')

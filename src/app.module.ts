@@ -11,6 +11,7 @@ import { SupplierModule } from './inventory/suppliers/supplier.module';
 import { WarehouseModule } from './inventory/warehouse/warehouse.module';
 import { ProductsModule } from './products/products.module';
 import { PurchaseOrderModule } from './purchases/purchase-orders/purchase-order.module';
+import { LocationModule } from './location/location.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { PurchaseOrderModule } from './purchases/purchase-orders/purchase-order.
     WarehouseModule,
     ProductsModule,
     PurchaseOrderModule,
+    LocationModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }
