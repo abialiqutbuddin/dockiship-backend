@@ -33,6 +33,7 @@ export class CreateVariantDto {
   @IsOptional() attributes?: Record<string, any>;
   @IsOptional() @IsEnum(PackagingType) packagingType?: PackagingType;
   @IsOptional() @IsInt() @Min(1) packagingQuantity?: number;
+  @IsOptional() @IsInt() @Min(0) stockOnHand?: number;
 }
 
 export class CreateProductDto {
@@ -75,6 +76,7 @@ export class CreateProductDto {
 
   @IsOptional() @IsEnum(PackagingType) packagingType?: PackagingType;
   @IsOptional() @IsInt() @Min(1) packagingQuantity?: number;
+  @IsOptional() @IsInt() @Min(0) stockOnHand?: number;
 
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CreateVariantDto)
   variants?: CreateVariantDto[];

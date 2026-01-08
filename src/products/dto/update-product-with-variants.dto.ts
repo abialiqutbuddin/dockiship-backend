@@ -34,6 +34,7 @@ export class VariantUpsertDto implements CreateVariantDto {
     @IsOptional() retailCurrency?: string;
     @IsOptional() originalPrice?: any;
     @IsOptional() originalCurrency?: string;
+    @IsOptional() stockOnHand?: number;
 }
 
 // Extend the parent DTO, but make `variants` strictly compatible with its base type

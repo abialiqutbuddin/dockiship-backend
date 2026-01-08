@@ -12,6 +12,8 @@ import { WarehouseModule } from './inventory/warehouse/warehouse.module';
 import { ProductsModule } from './products/products.module';
 import { PurchaseOrderModule } from './purchases/purchase-orders/purchase-order.module';
 import { LocationModule } from './location/location.module';
+import { OrderSettingsModule } from './order-settings/order-settings.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -27,6 +29,8 @@ import { LocationModule } from './location/location.module';
     ProductsModule,
     PurchaseOrderModule,
     LocationModule,
+    OrderSettingsModule,
+    OrdersModule,
   ],
 })
 export class AppModule { }

@@ -93,6 +93,17 @@ enum PackagingType {
   PIECES_PER_PACK
 }
 
+enum OrderStatus {
+  LABEL_PRINTED
+  PACKED
+  SHIPPED
+  DROP_OFF
+  DELIVERED
+  RETURN
+  CANCEL
+  REFUND
+}
+
 // =====================
 // Core Identity & RBAC
 // =====================
@@ -143,6 +154,10 @@ model Tenant {
   InventoryTxn    InventoryTxn[]
   Category        Category[]
   Size            Size[]
+  CourierMedium   CourierMedium[]
+  RemarkType      RemarkType[]
+  Color           Color[]
+  Order           Order[]
 
   @@index([slug])
   @@index([name])
@@ -380,6 +395,8 @@ model Product {
   supplierLinks ProductSupplier[]
   poi           PurchaseOrderItem[]
   txns          InventoryTxn[]
+  orders        Order[]
+  orderItems    OrderItem[]
 
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
@@ -537,6 +554,10 @@ model PurchaseOrderItem {
   notes            String?
   receivedQty      Int      @default(0)
 
+  // Landed cost fields (calculated when PO is saved)
+  allocatedShipping  Decimal?  @db.Decimal(12, 2)  // Shipping allocated to this line item
+  landedCostPerUnit  Decimal?  @db.Decimal(12, 4)  // Full cost per unit (price + tax + shipping)
+
   purchaseOrder PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   product       Product?        @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   productVar    ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
@@ -593,6 +614,8 @@ model Category {
 
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
+  orders   Order[]
+  orderItems OrderItem[]
   @@unique([tenantId, name], name: "uq_category_name_per_tenant")
   @@index([tenantId])
 }
@@ -608,6 +631,8 @@ model Size {
   tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   ProductVariant ProductVariant[]
 
+  orders   Order[]
+  orderItems OrderItem[]
   @@unique([tenantId, code], name: "uq_size_code_per_tenant")
   @@index([tenantId])
 }
@@ -643,6 +668,9 @@ model ProductVariant {
   lastPurchasePrice Decimal?  @db.Decimal(12, 2)
   lastPurchaseCurr  String?   @db.VarChar(3)
 
+  // Weighted average cost (recalculated on each stock receive/adjustment)
+  avgCostPerUnit    Decimal?  @db.Decimal(12, 4)  // Blended cost of all stock on hand
+
   // Stock Snapshots (based on your InventoryTxn states)
   stockOnHand     Int @default(0)
   stockReserved   Int @default(0)
@@ -658,8 +686,10 @@ model ProductVariant {
   size    Size?   @relation(fields: [sizeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   // link to operational tables
-  poi  PurchaseOrderItem[]
-  txns InventoryTxn[]
+  poi    PurchaseOrderItem[]
+  txns   InventoryTxn[]
+  orders Order[]
+  orderItems OrderItem[]
 
   @@unique([productId, sku], name: "uq_variant_sku_per_product")
   @@index([productId])
@@ -683,6 +713,7 @@ model TenantChannel {
 
   tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   listings ChannelListing[]
+  orders   Order[]         // Orders that used this channel as selling medium
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -724,3 +755,168 @@ model ChannelListing {
   @@index([productVariantId])
   @@index([status])
 }
+
+// =====================
+// Order & Shipping Settings
+// =====================
+
+model CourierMedium {
+  id        String   @id @default(uuid())
+  tenantId  String
+  fullName  String
+  shortName String
+  isActive  Boolean  @default(true)
+  
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders   Order[]
+  @@unique([tenantId, shortName], name: "uq_courier_shortname_per_tenant")
+  @@index([tenantId])
+  @@index([isActive])
+}
+
+model Color {
+  id       String  @id @default(uuid())
+  tenantId String
+  name     String
+  code     String? // Hex or code
+  sort     Int     @default(0)
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  orders   Order[]
+  orderItems OrderItem[]
+
+  @@unique([tenantId, name], name: "uq_color_name_per_tenant")
+  @@index([tenantId])
+}
+
+model Order {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  
+  date                DateTime @default(now())
+  orderId             String?  // Manually entered or generated ID
+  
+  tenantChannelId     String?  // Marketplace/selling channel
+  courierMediumId     String?
+  
+  // Deprecated single-product fields (kept for backward compatibility for now)
+  productId           String?
+  productVariantId    String?
+  productDescription  String?
+  sizeId              String?
+  colorId             String?
+  categoryId          String?
+  quantity            Int      @default(1)
+  costPrice           Decimal  @default(0) @db.Decimal(12, 2)
+  otherFee            Decimal  @default(0) @db.Decimal(12, 2)
+
+  // Aggregates
+  totalCost           Decimal  @default(0) @db.Decimal(12, 2) // purchase-price
+  totalAmount         Decimal  @default(0) @db.Decimal(12, 2) // sale-price
+  netProfit           Decimal  @default(0) @db.Decimal(12, 2)
+  
+  trackingId          String?
+  status              OrderStatus @default(LABEL_PRINTED)
+  remarks             String?
+  remarkTypeId        String?
+
+  tenant              Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantChannel       TenantChannel? @relation(fields: [tenantChannelId], references: [id])
+  courierMedium       CourierMedium? @relation(fields: [courierMediumId], references: [id])
+  
+  // Relations for deprecated single fields
+  product             Product?       @relation(fields: [productId], references: [id])
+  productVariant      ProductVariant? @relation(fields: [productVariantId], references: [id])
+  size                Size?          @relation(fields: [sizeId], references: [id])
+  color               Color?         @relation(fields: [colorId], references: [id])
+  category            Category?      @relation(fields: [categoryId], references: [id])
+  remarkType          RemarkType?    @relation(fields: [remarkTypeId], references: [id])
+
+  items               OrderItem[]
+  attachments         OrderAttachment[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([orderId])
+  @@index([date])
+  @@index([productId])
+  @@index([productVariantId])
+  @@unique([tenantId, orderId])
+}
+
+model OrderAttachment {
+  id        String   @id @default(uuid())
+  orderId   String
+  fileName  String
+  filePath  String
+  fileSize  Int?
+  mimeType  String?
+
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+}
+
+model OrderItem {
+  id                  String   @id @default(uuid())
+  orderId             String
+  
+  productId           String?
+  productVariantId    String?
+  productDescription  String? // Snapshot or custom description
+  
+  sizeId              String?
+  colorId             String?
+  categoryId          String? // if overridden or specific to item
+  
+  quantity            Int      @default(1)
+  
+  // Financials per item
+  unitCost            Decimal  @default(0) @db.Decimal(12, 2)
+  unitPrice           Decimal  @default(0) @db.Decimal(12, 2)
+  otherFee            Decimal  @default(0) @db.Decimal(12, 2) // allocated fee
+  
+  totalCost           Decimal  @default(0) @db.Decimal(12, 2) // quantity * unitCost
+  totalAmount         Decimal  @default(0) @db.Decimal(12, 2) // quantity * unitPrice
+  netProfit           Decimal  @default(0) @db.Decimal(12, 2)
+
+  order               Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product             Product?       @relation(fields: [productId], references: [id])
+  productVariant      ProductVariant? @relation(fields: [productVariantId], references: [id])
+  size                Size?          @relation(fields: [sizeId], references: [id])
+  color               Color?         @relation(fields: [colorId], references: [id])
+  category            Category?      @relation(fields: [categoryId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([productVariantId])
+}
+
+model RemarkType {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders      Order[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, name], name: "uq_remark_type_name_per_tenant")
+  @@index([tenantId])
+  @@index([isActive])
+}
+

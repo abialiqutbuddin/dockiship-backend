@@ -10,4 +10,5 @@ export class ListProductsQueryDto {
   @IsOptional() @IsString() search?: string;
   @IsOptional() @IsEnum(ProductStatus) status?: ProductStatus;
   @IsOptional() @IsString() supplierId?: string;
+  @IsOptional() @IsString() channelId?: string;
 }

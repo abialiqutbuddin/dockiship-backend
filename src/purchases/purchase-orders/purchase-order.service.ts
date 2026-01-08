@@ -3,6 +3,12 @@ import { POStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { ReceivePurchaseOrderItemsDto } from './dto/receive-purchase-order-items.dto';
+import {
+  calculateShippingPerUnit,
+  calculateItemLandedCost,
+  calculateWeightedAvgCost,
+  toNumber,
+} from '../../common/utils/inventory-cost.util';
 
 @Injectable()
 export class PurchaseOrderService {
@@ -87,6 +93,29 @@ export class PurchaseOrderService {
     const shippingTax = Number(dto.shippingTax ?? 0) || 0;
     const totalAmount = subtotal + productTax + shippingCost + shippingTax;
 
+    // Calculate landed costs for each item
+    const shippingPerUnit = calculateShippingPerUnit(
+      itemsData.map((i) => ({ quantity: i.quantity as number })),
+      { shippingCost, shippingTax }
+    );
+
+    // Update items with landed cost data
+    const itemsWithLandedCost = itemsData.map((item) => {
+      const landedCost = calculateItemLandedCost(
+        {
+          quantity: item.quantity as number,
+          unitPrice: item.unitPrice as number,
+          taxAmount: item.taxAmount as number,
+        },
+        shippingPerUnit
+      );
+      return {
+        ...item,
+        allocatedShipping: landedCost.allocatedShipping,
+        landedCostPerUnit: landedCost.landedCostPerUnit,
+      };
+    });
+
     const poNumber = await this.generatePoNumber(tenantId);
 
     const expectedDate = dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : null;
@@ -112,7 +141,7 @@ export class PurchaseOrderService {
         poNumber,
         createdByUserId: userId || undefined,
         items: {
-          create: itemsData,
+          create: itemsWithLandedCost,
         },
       },
       include: {
@@ -295,8 +324,9 @@ export class PurchaseOrderService {
             throw new BadRequestException('Purchase order item is missing productId');
           }
 
-          const lastPrice = item.unitPrice != null ? Number(item.unitPrice) : null;
-          const lastCurr = (item as any).currency || po.currency || null;
+          // Get landed cost per unit (calculated when PO was created)
+          const landedCostPerUnit = toNumber(item.landedCostPerUnit) || toNumber(item.unitPrice);
+          const lastCurr = item.currency || po.currency || null;
 
           let variantId = item.productVariantId;
           if (!variantId) {
@@ -312,11 +342,30 @@ export class PurchaseOrderService {
             variantId = variant.id;
           }
 
+          // Get current stock state for weighted average calculation
+          const currentVariant = await tx.productVariant.findUnique({
+            where: { id: variantId },
+            select: { stockOnHand: true, avgCostPerUnit: true },
+          });
+
+          // Calculate new weighted average cost
+          const avgResult = calculateWeightedAvgCost(
+            {
+              stockOnHand: currentVariant?.stockOnHand || 0,
+              avgCostPerUnit: currentVariant?.avgCostPerUnit || null,
+            },
+            {
+              quantity: qty,
+              costPerUnit: landedCostPerUnit,
+            }
+          );
+
           await tx.productVariant.update({
             where: { id: variantId },
             data: {
               stockOnHand: { increment: qty },
-              lastPurchasePrice: lastPrice ?? undefined,
+              avgCostPerUnit: avgResult.newAvgCostPerUnit,
+              lastPurchasePrice: landedCostPerUnit,
               lastPurchaseCurr: lastCurr ?? undefined,
             },
           });
@@ -325,7 +374,7 @@ export class PurchaseOrderService {
           await tx.product.update({
             where: { id: productId },
             data: {
-              lastPurchasePrice: lastPrice ?? undefined,
+              lastPurchasePrice: landedCostPerUnit,
               lastPurchaseCurr: lastCurr ?? undefined,
             },
           });
@@ -396,11 +445,33 @@ export class PurchaseOrderService {
           }
 
           if (variantId) {
+            // Get current stock state for weighted average calculation
+            const currentVariant = await tx.productVariant.findUnique({
+              where: { id: variantId },
+              select: { stockOnHand: true, avgCostPerUnit: true },
+            });
+
+            // Get landed cost per unit from PO item (calculated when PO was created)
+            const landedCostPerUnit = toNumber(poItem.landedCostPerUnit) || toNumber(poItem.unitPrice);
+
+            // Calculate new weighted average cost
+            const avgResult = calculateWeightedAvgCost(
+              {
+                stockOnHand: currentVariant?.stockOnHand || 0,
+                avgCostPerUnit: currentVariant?.avgCostPerUnit || null,
+              },
+              {
+                quantity: receiveItem.receivedQty,
+                costPerUnit: landedCostPerUnit,
+              }
+            );
+
             await tx.productVariant.update({
               where: { id: variantId },
               data: {
                 stockOnHand: { increment: receiveItem.receivedQty },
-                lastPurchasePrice: poItem.unitPrice ?? undefined,
+                avgCostPerUnit: avgResult.newAvgCostPerUnit,
+                lastPurchasePrice: landedCostPerUnit,
                 lastPurchaseCurr: poItem.currency || po.currency || undefined,
               },
             });
@@ -422,11 +493,11 @@ export class PurchaseOrderService {
               },
             });
 
-            // Update parent product snapshot
+            // Update parent product snapshot with landed cost
             await tx.product.update({
               where: { id: poItem.productId },
               data: {
-                lastPurchasePrice: poItem.unitPrice ?? undefined,
+                lastPurchasePrice: landedCostPerUnit,
                 lastPurchaseCurr: poItem.currency || po.currency || undefined,
               },
             });
@@ -636,6 +707,29 @@ export class PurchaseOrderService {
     const shippingTax = Number(dto.shippingTax ?? 0) || 0;
     const totalAmount = subtotal + productTax + shippingCost + shippingTax;
 
+    // Calculate landed costs for each item
+    const shippingPerUnit = calculateShippingPerUnit(
+      itemsData.map((i) => ({ quantity: i.quantity })),
+      { shippingCost, shippingTax }
+    );
+
+    // Update items with landed cost data
+    const itemsWithLandedCost = itemsData.map((item) => {
+      const landedCost = calculateItemLandedCost(
+        {
+          quantity: item.quantity,
+          unitPrice: item.unitPrice as number,
+          taxAmount: item.taxAmount as number,
+        },
+        shippingPerUnit
+      );
+      return {
+        ...item,
+        allocatedShipping: landedCost.allocatedShipping,
+        landedCostPerUnit: landedCost.landedCostPerUnit,
+      };
+    });
+
     const expectedDate = dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : null;
     if (dto.expectedDeliveryDate && (!expectedDate || Number.isNaN(expectedDate.getTime()))) {
       throw new BadRequestException('Expected delivery date is invalid');
@@ -662,7 +756,7 @@ export class PurchaseOrderService {
           updatedAt: new Date(),
           items: {
             createMany: {
-              data: itemsData,
+              data: itemsWithLandedCost,
             },
           },
         },

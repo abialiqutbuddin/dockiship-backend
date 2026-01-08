@@ -21,6 +21,20 @@ export class CreateChannelDto {
   storeUrl?: string;
 }
 
+export class UpdateChannelDto {
+  @IsOptional() @IsString()
+  marketplace?: string;
+
+  @IsOptional() @IsString()
+  accountId?: string;
+
+  @IsOptional() @IsString()
+  storeUrl?: string;
+
+  @IsOptional()
+  isActive?: boolean;
+}
+
 export class CreateListingForProductDto {
   // create a listing for the parent product
   @IsString() @IsNotEmpty()
@@ -30,10 +44,16 @@ export class CreateListingForProductDto {
   marketplace!: string; // channel name
 
   @IsOptional() @IsString()
+  channelId?: string;
+
+  @IsOptional() @IsString()
   externalSku?: string;
 
   @IsInt() @Min(0)
   units!: number;
+
+  @IsOptional()
+  price?: number;
 }
 
 export class CreateListingForVariantDto extends CreateListingForProductDto {

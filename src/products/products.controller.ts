@@ -17,7 +17,7 @@ import { diskStorage } from 'multer';
 import type { Request } from 'express';
 import { join, extname } from 'path';
 import { promises as fs } from 'fs';
-import { CreateChannelDto, CreateListingForProductDto, CreateListingForVariantDto, ListChannelQueryDto, ListProductNameQueryDto } from './dto/marketplace.dto';
+import { CreateChannelDto, CreateListingForProductDto, CreateListingForVariantDto, ListChannelQueryDto, ListProductNameQueryDto, UpdateChannelDto } from './dto/marketplace.dto';
 
 @Controller('products')
 @UseGuards(TenantGuard, JwtAuthGuard, RbacGuard)
@@ -231,6 +231,22 @@ export class ProductsController {
   @Permissions('inventory.product.manage')
   createMarketplaceChannel(@Req() req: any, @Body() dto: CreateChannelDto) {
     return this.products.createMarketplaceChannel(req.tenantId, dto);
+  }
+
+  @Patch('/marketplaces/channels/:channelId')
+  @Permissions('inventory.product.manage')
+  updateChannel(
+    @Req() req: any,
+    @Param('channelId') channelId: string,
+    @Body() dto: UpdateChannelDto,
+  ) {
+    return this.products.updateMarketplaceChannel(req.tenantId, channelId, dto);
+  }
+
+  @Delete('/marketplaces/channels/:channelId')
+  @Permissions('inventory.product.manage')
+  deleteChannel(@Req() req: any, @Param('channelId') channelId: string) {
+    return this.products.deleteMarketplaceChannel(req.tenantId, channelId);
   }
 
   // List all listings for a product (parent + per-variant)

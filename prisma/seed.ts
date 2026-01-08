@@ -7,46 +7,52 @@ async function main() {
   const basePermissions = [
     // Purchases (legacy)
     { name: 'purchases.create', description: 'Create purchases' },
-    { name: 'purchases.read',   description: 'View purchases' },
+    { name: 'purchases.read', description: 'View purchases' },
     { name: 'purchases.update', description: 'Edit purchases' },
     { name: 'purchases.delete', description: 'Delete purchases' },
 
     // Inventory (legacy, generic)
     { name: 'inventory.create', description: 'Create inventory items' },
-    { name: 'inventory.read',   description: 'View inventory' },
+    { name: 'inventory.read', description: 'View inventory' },
     { name: 'inventory.update', description: 'Edit inventory' },
     { name: 'inventory.delete', description: 'Delete inventory' },
 
     // RBAC / Users
-    { name: 'role.manage',      description: 'Manage roles and permissions' },
-    { name: 'user.manage',      description: 'Manage users' },
+    { name: 'role.manage', description: 'Manage roles and permissions' },
+    { name: 'user.manage', description: 'Manage users' },
   ];
 
   // --- New permissions for the new modules (additive) ---
   const newPermissions = [
     // Suppliers
-    { name: 'suppliers.read',   description: 'View suppliers' },
+    { name: 'suppliers.read', description: 'View suppliers' },
     { name: 'suppliers.manage', description: 'Create/update/archive suppliers' },
 
     // Warehouses
-    { name: 'warehouses.read',   description: 'View warehouses' },
+    { name: 'warehouses.read', description: 'View warehouses' },
     { name: 'warehouses.manage', description: 'Create/update/archive warehouses' },
 
     // Products (more explicit than generic inventory.*)
-    { name: 'inventory.product.read',   description: 'View products' },
+    { name: 'inventory.product.read', description: 'View products' },
     { name: 'inventory.product.manage', description: 'Create/update/archive products' },
 
     // Stock operations (ledger-driven)
-    { name: 'inventory.stock.adjust',   description: 'Manual stock adjustments' },
-    { name: 'inventory.stock.reserve',  description: 'Reserve/release stock' },
+    { name: 'inventory.stock.adjust', description: 'Manual stock adjustments' },
+    { name: 'inventory.stock.reserve', description: 'Reserve/release stock' },
     { name: 'inventory.stock.transfer', description: 'Transfer stock between warehouses' },
 
     // Purchase Orders (explicit verbs)
     { name: 'purchases.po.create', description: 'Create purchase orders' },
-    { name: 'purchases.po.read',   description: 'View purchase orders' },
+    { name: 'purchases.po.read', description: 'View purchase orders' },
     { name: 'purchases.po.update', description: 'Edit/update purchase orders' },
-    { name: 'purchases.po.receive',description: 'Receive/close purchase orders' },
+    { name: 'purchases.po.receive', description: 'Receive/close purchase orders' },
     { name: 'purchases.po.cancel', description: 'Cancel purchase orders' },
+
+    // Orders (Sales)
+    { name: 'orders.create', description: 'Create sales orders' },
+    { name: 'orders.read', description: 'View sales orders' },
+    { name: 'orders.update', description: 'Edit sales orders' },
+    { name: 'orders.delete', description: 'Delete sales orders' },
   ];
 
   // Merge (avoid accidental duplicates in this array)
